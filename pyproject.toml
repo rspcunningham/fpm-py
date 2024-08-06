@@ -1,8 +1,8 @@
 [tool.poetry]
 name = "fpm-py"
-version = "0.1.0"
+version = "0.0.1"
 description = ""
-authors = ["Robin Cunningham <rspcunningham@gmail.com>"]
+authors = ["Robin Cunningham <rspcunningham@gmail.com>", "Sammy Farnum <sfarnum1132@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
