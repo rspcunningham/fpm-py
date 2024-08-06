@@ -12,7 +12,8 @@ repository = "https://github.com/rspcunningham/fpm-py"
 homepage = "https://www.parasight.ca"
 
 [tool.poetry.dependencies]
-python = "^3.7"
+python = "^3.12"
+numpy = "^2.0.1"
 
 
 [build-system]
