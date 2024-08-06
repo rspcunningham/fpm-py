@@ -35,7 +35,9 @@ jobs:
       run: poetry install
 
     - name: Build package
-      run: poetry build
+      run: |
+        poetry version $(git describe --tags --abbrev=0 | cut -c 2-)
+        poetry build
 
     - name: Publish package distributions to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
