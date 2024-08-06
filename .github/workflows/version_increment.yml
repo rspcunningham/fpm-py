@@ -19,8 +19,9 @@ jobs:
           fetch-depth: "0"
 
       - name: Version bumper
-        uses: rspcunningham/pyproject-bump-version@v0.0.1
+        uses: rspcunningham/pyproject-bump-version@v0.0.2
         with:
           file_to_bump: "./pyproject.toml"
           bump_type: "minor"
           main_branch: "main"
+          python_version: "3.12"
