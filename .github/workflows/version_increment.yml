@@ -1,26 +1,24 @@
-name: "Version bumper"
+name: Semantic Release
+
 on:
-  pull_request:
+  push:
     branches:
-      - main
-    paths:
-      - 'fpm_py/**'
-      - './pyproject.toml'
+      - master
 
 jobs:
-  bump-version:
-    if: github.event.pull_request.merged == false
+  release:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.ref }}
-          fetch-depth: "0"
+    concurrency: release
+    permissions:
+      id-token: write
+      contents: write
 
-      - name: Version bumper
-        uses: rspcunningham/pyproject-bump-version@v0.0.1
-        with:
-          file_to_bump: "./pyproject.toml"
-          bump_type: "minor"
-          main_branch: "main"
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Python Semantic Release
+      uses: python-semantic-release/python-semantic-release@master
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
