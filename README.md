@@ -1,3 +1,3 @@
 # fpm-py
 
-Combine point-source images from different points in frequency-domain to get a single, resolution-enhanced image.
+Fourier ptychography is a computational image reconstruction technique that allows one high-resolution microscopic image to be acquired by combining multiple lower-resolution images captured at differing optical illumination angles.
