@@ -32,12 +32,13 @@ jobs:
         pip install poetry
 
     - name: Install dependencies
-      run: poetry install
+      run: | 
+        poetry lock
+        poetry install
 
     - name: Build package
       run: |
         poetry version $(git describe --tags --abbrev=0 | cut -c 2-)
-        poetry lock
         poetry build
 
     - name: Publish package distributions to PyPI
