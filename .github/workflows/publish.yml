@@ -37,6 +37,7 @@ jobs:
     - name: Build package
       run: |
         poetry version $(git describe --tags --abbrev=0 | cut -c 2-)
+        poetry lock
         poetry build
 
     - name: Publish package distributions to PyPI
