@@ -12,20 +12,30 @@ jobs:
       name: pypi
       url: https://pypi.org/p/fpm-py
     permissions:
+      contents: read
       id-token: write
+
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.12"
-      - name: Install Poetry
-        run: |
-          python -m pip install --upgrade pip
-          pip install poetry
-      - name: Install dependencies
-        run: poetry install
-      - name: Build package
-        run: poetry build
-      - name: Publish package distributions to PyPI
-        run: poetry publish --username __token__ --password $POETRY_PYPI_TOKEN_PYPI
+    - uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.12"
+
+    - name: Install Poetry
+      run: |
+        python -m pip install --upgrade pip
+        pip install poetry
+
+    - name: Install dependencies
+      run: poetry install
+
+    - name: Build package
+      run: poetry build
+
+    - name: Publish package distributions to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
