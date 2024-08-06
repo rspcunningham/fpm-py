@@ -1,15 +1,14 @@
+[build-system]
+requires = [ "poetry-core",]
+build-backend = "poetry.core.masonry.api"
+
 [tool.poetry]
 name = "fpm-py"
-version = "0.0.3"
+version = "0.1.0"
 description = ""
-authors = ["Robin Cunningham <rspcunningham@gmail.com>", "Sammy Farnum <sfarnum1132@gmail.com>"]
+authors = [ "Robin Cunningham <rspcunningham@gmail.com>", "Sammy Farnum <sfarnum1132@gmail.com>",]
 readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.12"
 numpy = "^2.0.1"
-
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
