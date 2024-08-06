@@ -19,9 +19,21 @@ jobs:
           fetch-depth: "0"
 
       - name: Version bumper
+        id: bump_version
         uses: rspcunningham/pyproject-bump-version@v0.0.3
         with:
           file_to_bump: "./pyproject.toml"
           bump_type: "minor"
           main_branch: "main"
           python_version: "3.12"
+
+      - name: Create Release
+        if: steps.bump_version.outputs.updated == 'true'
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.bump_version.outputs.version }}
+          release_name: Release ${{ steps.bump_version.outputs.version }}
+          draft: false
+          prerelease: false
