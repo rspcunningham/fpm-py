@@ -11,6 +11,7 @@ def get_device():
     else:
         return torch.device('cpu')
 
+@dataclass
 class ImageCapture:
     image: torch.Tensor
     k_vector: torch.Tensor
@@ -21,8 +22,8 @@ class ImageCapture:
             raise ValueError("image must be a 2D tensor (single channel image)")
 
         # Ensure k_vector is 1x2
-        if self.k_vector.shape != (1, 2):
-            raise ValueError("k_vector must be a tensor with shape (1, 2)")
+        if self.k_vector.shape != (2,):
+            raise ValueError("k_vector must be a tensor with shape [k_x, k_y]")
         
         # Ensure both tensors are on the same device
         device = self.image.device
@@ -35,6 +36,15 @@ class ImageCapture:
         
 @dataclass
 class ImageSeries: 
+    """
+    A series of images captured with the same optical magnification and pixel size.
+    
+    Args:
+        image_stack (list[ImageCapture]): A list of ImageCapture objects
+        optical_magnification (float): The optical magnification of the images
+        pixel_size (float): The physical size of a pixel in the image, in micrometers
+        effective_magnification (float): The effective magnification of the images. If not provided, it will be calculated as optical_magnification / pixel_size
+    """
     image_stack: list[ImageCapture]
     optical_magnification: float = None
     pixel_size: float = None
@@ -65,6 +75,15 @@ class ImageSeries:
         for image in self.image_stack[1:]:
             image.image = image.image.to(self.device)
         
-        
+    def save(self, path: str):
+        torch.save(self, path)
+    
+    @staticmethod
+    def load(path: str):
+        return torch.load(path)
 
-        
+    @staticmethod
+    def from_dict(path: str):
+        data = torch.load(path)
+        image_stack = [ImageCapture(torch.tensor(item["image"]), torch.tensor(item["k_vector"])) for item in data["image_stack"]]
+        return ImageSeries(image_stack, data["optical_magnification"], data["pixel_size"])
