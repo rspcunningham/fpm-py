@@ -12,8 +12,6 @@ pip install fpm-py
 
 ## Usage
 
-See `example.py` for how to use the module.
-
 ```python3
 import fpm_py as fpm
 import matplotlib.pyplot as plt
@@ -29,8 +27,7 @@ plt.show()
 
 ## Upcoming
 
-1. More `optimizer` and `iteration_terminator`s
-2. Complete documentation
-3. Public 10k+ image dataset
-4. Performance metrics, to assess how well the resulting reconstruction worked.
-5. Full testing
+1. Performance metric(s), to assess how well the resulting reconstruction worked.
+2. Full testing
+3. Complete documentation
+4. Public 10k+ image dataset
