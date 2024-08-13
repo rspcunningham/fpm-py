@@ -6,7 +6,6 @@ from .iteration_terminators import *
 
 import numpy as np
 import torch
-import matplotlib.pyplot as plt
 
 def reconstruct(
     image_series: ImageSeries,
