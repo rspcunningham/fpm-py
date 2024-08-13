@@ -67,4 +67,5 @@ def circle_like(array: torch.Tensor) -> torch.Tensor:
 
     distance = torch.sqrt((x - center_x) ** 2 + (y - center_y) ** 2)
     mask = distance <= radius
+    mask = mask.to(torch.complex64)
     return mask
