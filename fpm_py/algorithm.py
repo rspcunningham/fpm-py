@@ -8,8 +8,6 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 
-
-
 def reconstruct(
     image_series: ImageSeries,
     output_scale_factor: int = 10,
