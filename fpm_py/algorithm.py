@@ -9,7 +9,7 @@ import torch
 
 def reconstruct(
     image_series: ImageSeries,
-    output_scale_factor: int = 10,
+    output_scale_factor: int = None,
     pupil_0: torch.Tensor = None,
     iteration_terminator: TerminatorType = iter_ceil,
     optimizer: OptimizerType = tomas
@@ -38,13 +38,20 @@ def reconstruct(
     if image_series.image_size != pupil_0.shape:
         raise ValueError("The pupil and image sizes do not match.")
     
+    if output_scale_factor is None:
+        k_span = (image_series.image_size[0] // 2, image_series.image_size[1] // 2)
+        total = k_span + image_series.max_k // image_series.du
+        output_image_size = image_series.image_size * total // k_span + 1
+        output_image_size = [int(x.item()) for x in output_image_size]
+        print(f"Output image size: {output_image_size}")
+    else: 
+        output_image_size = [x * output_scale_factor for x in image_series.image_size]
+    
     # Convert pupil_0 to PyTorch tensor and move to device
     pupil_0 = torch.tensor(pupil_0, dtype=torch.complex64, device=image_series.device)
 
     # Initialize values
-    output_image_size = (image_series.image_size[0] * output_scale_factor, image_series.image_size[1] * output_scale_factor)
     fourier_center = (output_image_size[0] // 2, output_image_size[1] // 2)
-
     pupil_binary = pupil_0.abs() > 0
 
     # Initialize object and iteration counter

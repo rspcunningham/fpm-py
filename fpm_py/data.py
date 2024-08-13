@@ -52,6 +52,7 @@ class ImageSeries:
     device: torch.device = field(init=False)
     du: float = field(init=False)
     image_size: tuple[int, int] = field(init=False)
+    max_k: np.ndarray = field(init=False)
 
     def __post_init__(self):
         if self.effective_magnification is None:
@@ -76,6 +77,9 @@ class ImageSeries:
         self.device = self.image_stack[0].image.device
         for image in self.image_stack[1:]:
             image.image = image.image.to(self.device)
+
+        # Calculate the maximum k values
+        self.max_k = np.array([max([abs(item.k_vector[0]) for item in self.image_stack]), max([abs(item.k_vector[1]) for item in self.image_stack])])
         
     def save(self, path: str):
         self.device = None

@@ -13,7 +13,7 @@ OptimizerType = Callable[
     tuple[torch.Tensor, torch.Tensor]
 ]
 
-def simple_grad_descent(
+def quasi_second_order(
         object: torch.Tensor, 
         pupil: torch.Tensor, 
         wave_fourier: torch.Tensor, 
