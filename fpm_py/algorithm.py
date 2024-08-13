@@ -19,10 +19,10 @@ def reconstruct(
 
     Args:
         image_series (ImageSeries): The series of images to reconstruct.
-        output_scale_factor (int): The scale factor of the output image.
-        pupil_0 (torch.Tensor): The initial guess for the pupil function.
-        iteration_terminator (TerminatorType): The function that determines when to stop iterating.
-        optimizer (OptimizerType): The optimizer function that updates the object and pupil.
+        output_scale_factor (int): The scale factor of the output image. If not provided, the minimum needed size will be calculated.
+        pupil_0 (torch.Tensor): The initial calculation of the pupil function. If not provided, a boolean circular pupil will be created.
+        iteration_terminator (TerminatorType): The function that determines when to stop iterating. If not provided, the default is to iterate 10 times.
+        optimizer (OptimizerType): The optimizer function that updates the object and pupil. If not provided, the default is the tomas optimizer.
     
     Returns:
         torch.Tensor: The reconstructed object in the spatial domain.
@@ -38,6 +38,7 @@ def reconstruct(
     if image_series.image_size != pupil_0.shape:
         raise ValueError("The pupil and image sizes do not match.")
     
+    # assign the minimum needed output image size
     if output_scale_factor is None:
         k_span = (image_series.image_size[0] // 2, image_series.image_size[1] // 2)
         total = k_span + image_series.max_k // image_series.du
