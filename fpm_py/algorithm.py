@@ -1,18 +1,21 @@
 import numpy as np
 from .utils import *
 from .data import *
-from .optimizers import *
+from .optimizers_exp import *
 from .iteration_terminators import *
 
 import numpy as np
 import torch
+import matplotlib.pyplot as plt
+
+DEBUG = False
 
 def reconstruct(
     image_series: ImageSeries,
     output_scale_factor: int = 10,
     pupil_0: torch.Tensor = None,
     iteration_terminator: TerminatorType = iter_ceil,
-    optimizer: OptimizerType = simple_grad_descent
+    optimizer: OptimizerType = tomas
 ) -> torch.Tensor:
     # Create a default circular pupil if not provided
     if pupil_0 is None:
@@ -27,13 +30,24 @@ def reconstruct(
     pupil_0 = torch.tensor(pupil_0, dtype=torch.complex64, device=image_series.device)
 
     # Initialize values
-    output_image_size = image_series.image_size * output_scale_factor
-    fourier_center = torch.round(output_image_size / 2).to(torch.int32)
-    pupil_binary = pupil_0 > 0
+    output_image_size = (image_series.image_size[0] * output_scale_factor, image_series.image_size[1] * output_scale_factor)
+    fourier_center = (output_image_size[0] // 2, output_image_size[1] // 2)
+
+    pupil_binary = pupil_0.abs() > 0
 
     # Initialize object and iteration counter
     object = None
     i = 0
+
+    if DEBUG:
+        print("Starting reconstruction loop...")
+        plt.imshow(torch.abs(pupil_0).cpu().numpy())
+        plt.show()
+        print(f'{output_image_size=}')
+        print(f'{fourier_center=}')
+    
+
+
 
     # Main reconstruction loop
     while not iteration_terminator(object, i):
@@ -46,37 +60,103 @@ def reconstruct(
                 # Initialize object with first image
                 object = torch.zeros(output_image_size, dtype=torch.complex64, device=image_series.device)
                 pupil = pupil_0
+
                 x, y = kvector_to_x_y(fourier_center, image_series.image_size, image_series.du, k_vector)
+                #x, y = kvector_to_x_y(fourier_center, image_series.image_size, image_series.du, torch.Tensor([0, 0]))
+
                 wave_fourier_new = ft(torch.sqrt(image))
-                overlap_matrices(object, wave_fourier_new * pupil, x, y)
+                object = overlap_matrices(object, wave_fourier_new * pupil, x, y)
+
+                if DEBUG:
+                    plt.imshow(torch.abs(ift(object)).cpu().numpy())
+                    plt.title("object init")
+                    plt.show()
+                
                 continue
 
             # Calculate x and y coordinates for the current image
             x, y = kvector_to_x_y(fourier_center, image_series.image_size, image_series.du, k_vector)
 
+            if DEBUG:
+                print(f'{x=}, {y=}')
+
+            if DEBUG:
+                plt.imshow(torch.abs(pupil).cpu().numpy())
+                plt.title("pupil")
+                plt.show()
+
+            if DEBUG:
+                plt.imshow(torch.abs(ift(object[x:x+image_series.image_size[0], y:y+image_series.image_size[1]])).cpu().numpy())
+                plt.title("object slice")
+                plt.show()
+
+
             # Extract the relevant part of the object and multiply by pupil
             wave_fourier = object[x:x+image_series.image_size[0], y:y+image_series.image_size[1]] * pupil
+
+            if DEBUG:
+                plt.imshow(torch.abs(wave_fourier).cpu().numpy())
+                plt.title("wave_fourier")
+                plt.show()
 
             # Transform to spatial domain
             wave_spatial = ift(wave_fourier)
 
+            if DEBUG:
+                plt.imshow(torch.abs(ift(wave_spatial)).cpu().numpy())
+                plt.title("wave_spatial")
+                plt.show()
+
             # Calculate estimated and measured images
             image_estimated = torch.abs(wave_spatial) ** 2
+
+            if DEBUG:
+                plt.imshow(torch.abs(ift(image_estimated)).cpu().numpy())
+                plt.title("image_estimated")
+                plt.show()
+
             image_measured = image
+            image_measured = torch.clamp(image_measured, min=0)
+
+            if DEBUG:
+                plt.imshow(torch.abs(ift(image_measured)).cpu().numpy())
+                plt.title("image_measured")
+                plt.show()
 
             # Update wave_fourier based on measured and estimated images
             wave_fourier_new = ft(
                 torch.sqrt(image_measured) * wave_spatial / (torch.sqrt(image_estimated) + torch.finfo(torch.float32).eps)
             )
+            #wave_fourier_new = ft(torch.sqrt(image_measured))
+
+            if DEBUG:
+                fig, axs = plt.subplots(1, 2)
+                axs[0].imshow(wave_fourier_new.real.cpu().numpy())
+                axs[0].set_title("wave_fourier_new (real)")
+                axs[1].imshow(wave_fourier_new.imag.cpu().numpy())
+                axs[1].set_title("wave_fourier_new (imag)")
+                plt.show()
+
+                print(f"wave_fourier min: {abs(wave_fourier_new).min()}, max: {abs(wave_fourier_new).max()}")
 
             # Constrain pupil to binary mask
             pupil = pupil * pupil_binary
 
             # Optimize object and pupil
+            if DEBUG:
+                plt.imshow(torch.abs(ift(object)).cpu().numpy())
+                plt.title(f"Iteration {i}, Image {j} (before optimizer)")
+                plt.show()
+
             object, pupil = optimizer(object, pupil, wave_fourier, wave_fourier_new, x, y)
+            
+            if DEBUG:
+                plt.imshow(torch.abs(ift(object)).cpu().numpy())
+                plt.title(f"Iteration {i}, Image {j} (after optimizer)")
+                plt.show()
 
         # Increment iteration counter
         i += 1
 
     # Return the final reconstructed object in spatial domain
-    return ift(object).cpu().numpy()
+    return ift(object).cpu()
