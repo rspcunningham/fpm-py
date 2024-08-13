@@ -6,7 +6,7 @@ authors = [
     "Robin Cunningham <rspcunningham@gmail.com>", 
     "Sammy Farnum <sfarnum1132@gmail.com>"
 ]
-readme = "module_readme.md"
+readme = "README.md"
 license = "MIT"
 repository = "https://github.com/rspcunningham/fpm-py"
 homepage = "https://www.parasight.ca"
