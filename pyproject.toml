@@ -20,6 +20,7 @@ matplotlib = "^3.9.1.post1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.2"
+sphinx = "^8.0.2"
 
 [build-system]
 requires = ["poetry-core"]
