@@ -26,3 +26,10 @@ output = fpm.reconstruct(dataset)
 plt.imshow(output.abs().cpu().numpy(), cmap="gray")
 plt.show()
 ```
+
+## Upcoming
+
+1. Performance metric(s), to assess how well the resulting reconstruction worked.
+2. Full testing
+3. Complete documentation
+4. Public 10k+ image dataset
