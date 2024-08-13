@@ -10,6 +10,21 @@ More information about Fourier ptychography can be found [here](https://en.wikip
 pip install fpm-py
 ```
 
+## Usage
+
+```python3
+import fpm_py as fpm
+import matplotlib.pyplot as plt
+
+# load example dataset
+dataset = fpm.ImageSeries.from_dict("datasets/example.pt")
+
+output = fpm.reconstruct(dataset)
+
+plt.imshow(output.abs().cpu().numpy(), cmap="gray")
+plt.show()
+```
+
 ## Upcoming
 
 1. More `optimizer` and `iteration_terminator`s
