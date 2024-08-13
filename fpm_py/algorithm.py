@@ -1,3 +1,7 @@
+"""
+The algorithm module contains the core algorithm for reconstructing an object from a series of images. The main function is reconstruct, which takes an ImageSeries object and returns the reconstructed object in the spatial domain.
+"""
+
 from .utils import *
 from .data import *
 from .optimizers import *
