@@ -52,6 +52,7 @@ class ImageSeries:
     device: torch.device = field(init=False)
     du: float = field(init=False)
     image_size: tuple[int, int] = field(init=False)
+    max_k: np.ndarray = field(init=False)
 
     def __post_init__(self):
         if self.effective_magnification is None:
@@ -69,21 +70,45 @@ class ImageSeries:
         for image in self.image_stack[1:]:
             if image.image.shape != self.image_size:
                 raise ValueError("All images in the stack must have the same shape")
+            
+        self.image_size = torch.tensor(self.image_size, device=self.device)
         
         # ensure all images are on the same device
         self.device = self.image_stack[0].image.device
         for image in self.image_stack[1:]:
             image.image = image.image.to(self.device)
+
+        # Calculate the maximum k values
+        k_vectors = torch.stack([item.k_vector for item in self.image_stack])
+        self.max_k = torch.max(torch.abs(k_vectors), dim=0)[0]
         
     def save(self, path: str):
+        self.device = None
         torch.save(self, path)
     
     @staticmethod
     def load(path: str):
-        return torch.load(path)
+        dataset = torch.load(path)
+        dataset.device = get_device()
+        return dataset
 
     @staticmethod
     def from_dict(path: str):
-        data = torch.load(path)
-        image_stack = [ImageCapture(torch.tensor(item["image"]), torch.tensor(item["k_vector"])) for item in data["image_stack"]]
+        torch.serialization.add_safe_globals(['image_stack', 'optical_magnification', 'pixel_size'])
+        data = torch.load(path, weights_only=True)
+        image_stack = [
+            ImageCapture(item["image"].to(device=get_device()), item["k_vector"].to(device=get_device())) 
+            for item in data["image_stack"]
+        ]
         return ImageSeries(image_stack, data["optical_magnification"], data["pixel_size"])
+    
+    def to_dict(self):
+        return {
+            "image_stack": [{"image": item.image.cpu().numpy().tolist(), "k_vector": item.k_vector.cpu().numpy().tolist()} for item in self.image_stack],
+            "optical_magnification": self.optical_magnification,
+            "pixel_size": self.pixel_size,
+            "effective_magnification": self.effective_magnification,
+            "device": str(self.device),
+            "du": self.du,
+            "image_size": self.image_size
+        }
