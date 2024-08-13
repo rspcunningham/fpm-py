@@ -4,7 +4,7 @@ Fourier ptychography is a computational image reconstruction technique that allo
 
 More information about Fourier ptychography can be found [here](https://en.wikipedia.org/wiki/Fourier_ptychography).
 
-This library implements the Fourier ptychography technique in python to allow continued research and development. Existing implementation are undocumented, unreadable, and in MATLAB :frown:.
+This library implements the Fourier ptychography technique in python to allow continued research and development. Existing implementation are undocumented, unreadable, and in MATLAB :frowning:.
 
 ## Structure
 
