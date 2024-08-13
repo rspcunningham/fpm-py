@@ -8,7 +8,7 @@ def ft(x: torch.Tensor) -> torch.Tensor:
 def ift(x: torch.Tensor) -> torch.Tensor:
     return torch.fft.ifftshift(torch.fft.ifft2(torch.fft.fftshift(x)))
 
-def kvector_to_x_y(fourier_center: torch.Tensor, image_size: torch.Tensor, du: torch.Tensor, k_vector: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+def kvector_to_x_y(fourier_center: tuple[int, int], image_size: tuple[int, int], du: float, k_vector: torch.Tensor) -> tuple[int, int]:
     """
     Converts k-vector to x and y coordinates in the spatial domain.
     Args:
@@ -19,9 +19,12 @@ def kvector_to_x_y(fourier_center: torch.Tensor, image_size: torch.Tensor, du: t
     Returns:
     tuple: The x and y coordinates in the spatial domain.
     """
-    fourier_shift = torch.round(k_vector / du).to(torch.int32)
-    x, y = (fourier_center + fourier_shift - torch.floor(image_size / 2)).to(torch.int32)
-    return x, y
+    fourier_shift = (k_vector[0] // du, k_vector[1] // du)
+    image_center = (image_size[0] // 2, image_size[1] // 2)
+    x = fourier_center[0] + fourier_shift[0] - image_center[0]
+    y = fourier_center[1] + fourier_shift[1] - image_center[1]
+
+    return int(x), int(y)
 
 def overlap_matrices(larger: torch.Tensor, smaller: torch.Tensor, bottom: int, left: int) -> torch.Tensor:
     """
@@ -58,9 +61,11 @@ def circle_like(array: torch.Tensor) -> torch.Tensor:
     mask = torch.zeros(array.shape, dtype=torch.bool, device=array.device)
     center_y, center_x = torch.tensor(mask.shape, device=array.device) // 2
     radius = min(center_y, center_x)
-    y, x = torch.ogrid[:mask.shape[0], :mask.shape[1]]
-    y = y.to(array.device)
-    x = x.to(array.device)
+
+    y = torch.arange(mask.shape[0], device=array.device).view(-1, 1)
+    x = torch.arange(mask.shape[1], device=array.device).view(1, -1)
+
     distance = torch.sqrt((x - center_x) ** 2 + (y - center_y) ** 2)
     mask = distance <= radius
+    mask = mask.to(torch.complex64)
     return mask

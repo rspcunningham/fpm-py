@@ -4,40 +4,81 @@ Fourier ptychography is a computational image reconstruction technique that allo
 
 More information about Fourier ptychography can be found [here](https://en.wikipedia.org/wiki/Fourier_ptychography).
 
-## Instalation
+This library implements the Fourier ptychography technique in python to allow continued research and development. Existing implementation are undocumented, unreadable, and in MATLAB :frowning:.
 
-```bash
-pip install fpm-py
+## Structure
+
+```plaintext
+FPM-PY/
+├── .github/
+│   └── workflows/
+│       └── publish.yml
+├── .pytest_cache/
+├── datasets/
+│   └── example.pt
+├── fpm_py/
+│   ├── __pycache__/
+│   ├── __init__.py
+│   ├── algorithm.py
+│   ├── data.py
+│   ├── iteration_terminators.py
+│   ├── optimizers.py
+│   └── utils.py
+├── tests/
+│   ├── __pycache__/
+│   ├── __init__.py
+│   └── test_utils.py
+├── .gitignore
+├── example.py
+├── LICENSE
+├── poetry.lock
+├── pyproject.toml
+└── README.md
 ```
+
+Example usage can be found in [`example.py`](https://github.com/rspcunningham/fpm-py/blob/get-algo-working-with-real-data/example.py) and below under the 'Usage' heading.
+
+The main module source is located under `/fpm_py`:
+
+- `algorithm.py`: contains the core fpm algorithm function.
+- `data.py`: contains dataclasses for `ImageCapture` and `ImageSeries`, the core datastructures used by fpm.
+  - `ImageCapture`: a single image and its associated k-space vector [k_x, k_y].
+  - `ImageSeries`: a complete set of `ImageCapture`s (the stack), and capture series metadata needed for reconstruction. When creating a series, only (`optical_magnification` and sensor `pixel_size`) or `effective_magnification` are needed. Device is automatically assigned by pytorch following the heirarchy: `cuda > mps > cpu`.
+  - Functions to load a dataset (ie an `ImageSeries`) or save one to the disk.
+- `iteration_terminators.py`: functions that return `True` when iteration should be stopped.
+- `optimizers.py`: functions that update the object and pupil using the updated wavefunction.
+- `utils.py`: some helpful functions and abstractions.
+
+The dataset in `/datasets/example.pt` is for a USAF bar pattern. It is saved as a pickled dictionary.
+
+Test cases for the module are under `/tests` --> these need to be worked on, lol.
+
+## Installation
+
+To use in your project: `pip install fpm-py`
 
 ## Usage
 
-The library exposes the `ImageCapture` data class and the `reconstruct` function for running the algorithm. Data should be provided through the Stack (somewhat analogous to a DataLoader in pytorch). The Stack is a list of ImageCapture objects, following the signature:
-
-```python3
-class ImageCapture:
-    image: np.ndarray # the image to be fed into the algorithm.
-    k_vector: np.ndarray # k-space vector of the form [k_x, k_y] associated with this image capture.
-```
-
-To built the high-resolution image, simply run the `reconstruct` function. The only required parameter is `effective_magnification`, which is a property of the hardware used. It is the ratio of the image magnification (determined by the lens) and the physical size of each pixel on the imaging sensor, in microns (determined by the sensor).
+See example usage in `example.py`, and below:
 
 ```python3
 import fpm_py as fpm
+import matplotlib.pyplot as plt
 
-output = fpm.reconstruct(stack, effective_magnification)
+# load example dataset
+dataset = fpm.ImageSeries.from_dict("datasets/example.pt")
+
+# reconstruct the object
+output = fpm.reconstruct(dataset)
+
+# plot the output
+plt.imshow(output.abs().cpu().numpy(), cmap="gray")
+plt.show()
 ```
 
 ## Upcoming
 
-1. More `optimizer` and `iteration_terminator`s
-2. Complete documentation
-3. Public 10k+ image dataset
-4. Performance metrics, to assess how well the resulting reconstruction worked.
-5. Full testing
-
-For access to [experimental](https://github.com/rspcunningham/fpm-py/fpm_py/experimental) features, simply:
-
-```python3
-import experimental from fpm-py as fpm
-```
+1. Performance metric(s), to assess how well the resulting reconstruction worked.
+2. Full testing
+3. Complete documentation
+4. Public 10k+ image dataset
