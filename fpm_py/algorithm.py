@@ -1,10 +1,8 @@
-import numpy as np
 from .utils import *
 from .data import *
 from .optimizers import *
 from .iteration_terminators import *
 
-import numpy as np
 import torch
 
 def reconstruct(
