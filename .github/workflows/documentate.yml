@@ -27,4 +27,4 @@ jobs:
         docs_repo_owner: 'rspcunningham'
         docs_repo_name: 'fpm-py-docs'
         docs_github_directory_path: 'docs/reference'
-        github_token: ${{ secrets.GITHUB_TOKEN }}
+        token: ${{ secrets.DOCS_EDITOR }}
