@@ -52,7 +52,7 @@ class ImageSeries:
     device: torch.device = field(init=False)
     du: float = field(init=False)
     image_size: tuple[int, int] = field(init=False)
-    max_k: np.ndarray = field(init=False)
+    max_k: torch.Tensor = field(init=False)
 
     def __post_init__(self):
         if self.effective_magnification is None:
