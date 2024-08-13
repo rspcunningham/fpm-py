@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import time
 
 # Load the image series
-data = ImageSeries.from_dict('datasets/data.pt')
+data = ImageSeries.from_dict('datasets/data_2.pt')
 
 #plt.imshow(data.image_stack[0].image.cpu().numpy(), cmap='gray')
 
