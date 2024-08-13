@@ -12,6 +12,8 @@ pip install fpm-py
 
 ## Usage
 
+See `example.py` for how to use the module.
+
 ```python3
 import fpm_py as fpm
 import matplotlib.pyplot as plt

@@ -71,7 +71,7 @@ class ImageSeries:
             if image.image.shape != self.image_size:
                 raise ValueError("All images in the stack must have the same shape")
             
-        #self.image_size = torch.tensor(self.image_size, device=self.device)
+        self.image_size = torch.tensor(self.image_size, device=self.device)
         
         # ensure all images are on the same device
         self.device = self.image_stack[0].image.device
@@ -79,7 +79,8 @@ class ImageSeries:
             image.image = image.image.to(self.device)
 
         # Calculate the maximum k values
-        self.max_k = np.array([max([abs(item.k_vector[0]) for item in self.image_stack]), max([abs(item.k_vector[1]) for item in self.image_stack])])
+        k_vectors = torch.stack([item.k_vector for item in self.image_stack])
+        self.max_k = torch.max(torch.abs(k_vectors), dim=0)[0]
         
     def save(self, path: str):
         self.device = None
@@ -93,9 +94,10 @@ class ImageSeries:
 
     @staticmethod
     def from_dict(path: str):
-        data = torch.load(path)
+        torch.serialization.add_safe_globals(['image_stack', 'optical_magnification', 'pixel_size'])
+        data = torch.load(path, weights_only=True)
         image_stack = [
-            ImageCapture(torch.tensor(item["image"]), torch.tensor(item["k_vector"])) 
+            ImageCapture(item["image"].to(device=get_device()), item["k_vector"].to(device=get_device())) 
             for item in data["image_stack"]
         ]
         return ImageSeries(image_stack, data["optical_magnification"], data["pixel_size"])
