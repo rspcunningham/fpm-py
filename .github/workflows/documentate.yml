@@ -11,7 +11,7 @@ permissions:
   pull-requests: write
 
 jobs:
-  test-update-docs:
+  update-docs:
     runs-on: ubuntu-latest
 
     steps:
