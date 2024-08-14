@@ -100,32 +100,9 @@ class ImageSeries:
         # Calculate the maximum k values
         k_vectors = torch.stack([item.k_vector for item in self.image_stack])
         self.max_k = torch.max(torch.abs(k_vectors), dim=0)[0]
-        
-    def save(self, path: str):
-        """
-        Save the ImageSeries object to disk.
-
-        Args:
-            path (str): The path to save the object to
-
-        """
-        self.device = None
-        torch.save(self, path)
-    
-    @staticmethod
-    def load(path: str):
-        """
-        Load an ImageSeries object from disk.
-        
-        Args:
-            path (str): The path to load the object from
-        """
-        dataset = torch.load(path)
-        dataset.device = get_device()
-        return dataset
 
     @staticmethod
-    def from_dict(path: str):
+    def from_dict(data: dict):
         """
         Load an ImageSeries object saved as a dictionary.
 
@@ -136,13 +113,19 @@ class ImageSeries:
             ImageSeries: The loaded ImageSeries object
 
         """
-        torch.serialization.add_safe_globals(['image_stack', 'optical_magnification', 'pixel_size'])
-        data = torch.load(path, weights_only=True)
         image_stack = [
             ImageCapture(item["image"].to(device=get_device()), item["k_vector"].to(device=get_device())) 
             for item in data["image_stack"]
         ]
         return ImageSeries(image_stack, data["optical_magnification"], data["pixel_size"])
+    
+    @staticmethod
+    def load(path: str):
+        
+        torch.serialization.add_safe_globals(['image_stack', 'optical_magnification', 'pixel_size'])
+        data = torch.load(path, weights_only=True)
+
+        return ImageSeries.from_dict(data)
     
     def to_dict(self):
         """
@@ -157,3 +140,8 @@ class ImageSeries:
             "du": self.du,
             "image_size": self.image_size
         }
+    
+    def save(self, path):
+
+        data = self.to_dict()
+        torch.save(data, path)
