@@ -1,5 +1,5 @@
 """
-This module contains the ImageCapture and ImageSeries classes, which are the base datatypes used to store and manipulate images and image series in the FPM framework. The ImageCapture class represents a single image capture, while the ImageSeries class represents a series of images captured with the same optical magnification and pixel size. The ImageSeries class also contains methods for saving and loading image series data to and from disk.
+This module contains the `ImageCapture` and `ImageSeries` classes, which are the base datatypes used to store and manipulate images and image series in the FPM framework. The `ImageCapture` class represents a single image capture, while the  ImageSeries  class represents a series of images captured with the same optical magnification and pixel size. The `ImageSeries` class also contains methods for saving and loading image series data to and from disk.
 """
 
 from dataclasses import dataclass, field

@@ -1,11 +1,17 @@
+"""
+Utility functions for the FPM reconstruction process.
+"""
+
 import torch
 
 # 2D Fourier transform
 def ft(x: torch.Tensor) -> torch.Tensor:
+    """Simple macro for 2D Fourier transform."""
     return torch.fft.fftshift(torch.fft.fft2(torch.fft.ifftshift(x)))
 
 # 2D Inverse Fourier transform
 def ift(x: torch.Tensor) -> torch.Tensor:
+    """Simple macro for 2D Inverse Fourier transform."""
     return torch.fft.ifftshift(torch.fft.ifft2(torch.fft.fftshift(x)))
 
 def kvector_to_x_y(fourier_center: tuple[int, int], image_size: tuple[int, int], du: float, k_vector: torch.Tensor) -> tuple[int, int]:

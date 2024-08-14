@@ -1,3 +1,16 @@
+"""
+This module contains functions that determine when to stop the iteration process. The functions are used as arguments in the `reconstruct` function in the `algorithm.py` module. The functions are simple and can be easily replaced with custom functions.
+
+All functions must match the `TerminateType` type alias:
+```python
+TerminatorType = Callable[
+    [torch.Tensor, int], 
+    bool
+]
+```
+
+"""
+
 
 import torch
 from typing import Callable
@@ -6,9 +19,6 @@ TerminatorType = Callable[
     [torch.Tensor, int], 
     bool
 ]
-"""
-Type alias for the iteration terminator function type. A function that takes an object tensor and an iteration number and returns a boolean indicating whether to stop iterating. A return value of True indicates that the iteration should stop.
-"""
 
 def iter_ceil(object: torch.Tensor, i: int, max_iters: int = 10) -> bool:
     """
