@@ -60,9 +60,13 @@ def reconstruct(
     # Initialize object and iteration counter
     object = None
     i = 0
+    wave_fourier = None
+    wave_fourier_new = None
+
+    terminator_inputs = TerminatorInputs(object, wave_fourier, wave_fourier_new, i)
 
     # Main reconstruction loop
-    while not iteration_terminator(object, i):
+    while not iteration_terminator(terminator_inputs):
         for _, data in enumerate(image_series.image_stack):
 
             image = data.image
@@ -106,11 +110,13 @@ def reconstruct(
             pupil = pupil * pupil_binary
 
             # Optimize object and pupil
-            object, pupil = optimizer(object, pupil, wave_fourier, wave_fourier_new, x, y)
+            optimizer_inputs = OptimizerInputs(object, pupil, wave_fourier, wave_fourier_new, x, y)
+            object, pupil = optimizer(optimizer_inputs)
 
 
         # Increment iteration counter
         i += 1
+        terminator_inputs = TerminatorInputs(object, wave_fourier, wave_fourier_new, i)
 
     # Return the final reconstructed object in spatial domain
     return ift(object)
