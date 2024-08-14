@@ -17,13 +17,16 @@ def ift(x: torch.Tensor) -> torch.Tensor:
 def kvector_to_x_y(fourier_center: tuple[int, int], image_size: tuple[int, int], du: float, k_vector: torch.Tensor) -> tuple[int, int]:
     """
     Converts k-vector to x and y coordinates in the spatial domain.
+
     Args:
-    fourier_center (Tensor): The center of the Fourier domain.
-    image_size (Tensor): The size of the image.
-    du (Tensor): The effective magnification.
-    k_vector (Tensor): The k-vector.
+        fourier_center (Tensor): The center of the Fourier domain.
+        image_size (Tensor): The size of the image.
+        du (Tensor): The effective magnification.
+        k_vector (Tensor): The k-vector.
+    
     Returns:
-    tuple: The x and y coordinates in the spatial domain.
+        tuple: The x and y coordinates in the spatial domain.
+    
     """
     fourier_shift = (k_vector[0] // du, k_vector[1] // du)
     image_center = (image_size[0] // 2, image_size[1] // 2)

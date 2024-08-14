@@ -28,6 +28,7 @@ def reconstruct(
     
     Returns:
         torch.Tensor: The reconstructed object in the spatial domain.
+        
     """
 
 
