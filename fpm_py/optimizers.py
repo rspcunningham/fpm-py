@@ -1,12 +1,23 @@
+"""
+This module contains the optimizers used in the FPM reconstruction process. The optimizers are used as arguments in the `reconstruct` function in the `algorithm.py` module. Optimizers update the object and pupil in each iteration of the reconstruction process.
+
+All functions must match the `OptimizerType` type alias:
+```python
+OptimizerType = Callable[
+    [torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, int, int], 
+    tuple[torch.Tensor, torch.Tensor]
+]
+```
+
+"""
+
+
 import torch
 from typing import Callable
 
 import matplotlib.pyplot as plt
 
 from .utils import overlap_matrices, ift, ft
-
-DEBUG = False
-
 
 OptimizerType = Callable[
     [torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, int, int], 
