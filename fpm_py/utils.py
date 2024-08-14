@@ -6,12 +6,23 @@ import torch
 
 # 2D Fourier transform
 def ft(x: torch.Tensor) -> torch.Tensor:
-    """Simple macro for 2D Fourier transform."""
+    """
+    Simple macro for 2D Fourier transform.
+    Args:
+    x (torch.Tensor): The input image.
+    Returns:
+    torch.Tensor: The Fourier transform of the input image."""
     return torch.fft.fftshift(torch.fft.fft2(torch.fft.ifftshift(x)))
 
 # 2D Inverse Fourier transform
 def ift(x: torch.Tensor) -> torch.Tensor:
-    """Simple macro for 2D Inverse Fourier transform."""
+    """
+    Simple macro for 2D Inverse Fourier transform.
+    Args:
+    x (torch.Tensor): The input Fourier domain image.
+    Returns:
+    torch.Tensor: The inverse Fourier transform of the input image.
+    """
     return torch.fft.ifftshift(torch.fft.ifft2(torch.fft.fftshift(x)))
 
 def kvector_to_x_y(fourier_center: tuple[int, int], image_size: tuple[int, int], du: float, k_vector: torch.Tensor) -> tuple[int, int]:
@@ -19,13 +30,13 @@ def kvector_to_x_y(fourier_center: tuple[int, int], image_size: tuple[int, int],
     Converts k-vector to x and y coordinates in the spatial domain.
 
     Args:
-        fourier_center (Tensor): The center of the Fourier domain.
-        image_size (Tensor): The size of the image.
-        du (Tensor): The effective magnification.
-        k_vector (Tensor): The k-vector.
-    
+    fourier_center (tuple[int, int]): The center of the Fourier domain image.
+    image_size (tuple[int, int]): The size of the image.
+    du (float): The pixel size in the Fourier domain.
+    k_vector (torch.Tensor): The k-vector associated with the image.
+
     Returns:
-        tuple: The x and y coordinates in the spatial domain.
+    tuple[int, int]: The x and y coordinates in the spatial domain.
     
     """
     fourier_shift = (k_vector[0] // du, k_vector[1] // du)
@@ -39,12 +50,12 @@ def overlap_matrices(larger: torch.Tensor, smaller: torch.Tensor, bottom: int, l
     """
     Adds a smaller matrix to a larger matrix at the specified position.
     Args:
-    larger (Tensor): The larger matrix.
-    smaller (Tensor): The smaller matrix.
+    larger (torch.Tensor): The larger matrix.
+    smaller (torch.Tensor): The smaller matrix.
     bottom (int): The bottom row index to place the smaller matrix.
     left (int): The left column index to place the smaller matrix.
     Returns:
-    Tensor: The updated larger matrix.
+    torch.Tensor: The updated larger matrix.
     """
     # Get the dimensions of the smaller matrix
     rows, cols = smaller.shape
@@ -61,11 +72,11 @@ def overlap_matrices(larger: torch.Tensor, smaller: torch.Tensor, bottom: int, l
 
 def circle_like(array: torch.Tensor) -> torch.Tensor:
     """
-    Creates a circular mask with the same shape as the input array.
+    Creates a complex-valued circular mask with the same shape as the input array.
     Args:
-    array (Tensor): The input array.
+    array (torch.Tensor): The input array.
     Returns:
-    Tensor: The circular mask.
+    torch.Tensor: The circular mask.
     """
     mask = torch.zeros(array.shape, dtype=torch.bool, device=array.device)
     center_y, center_x = torch.tensor(mask.shape, device=array.device) // 2
