@@ -6,7 +6,7 @@ More information about Fourier ptychography can be found [here](https://en.wikip
 
 This library implements the Fourier ptychography technique in python to allow continued research and development. Existing implementations are undocumented, unreadable, and in MATLAB :frowning:.
 
-Documentation is available at: [http://www.rspcunningham.github.io/fpm-py-docs/]
+Documentation is available at: http://www.rspcunningham.github.io/fpm-py-docs/
 
 ## Structure
 
