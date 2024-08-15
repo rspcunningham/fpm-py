@@ -13,14 +13,11 @@ homepage = "https://www.parasight.ca"
 
 [tool.poetry.dependencies]
 python = "^3.12"
-numpy = "^2.0.1"
 torch = "^2.4.0"
-matplotlib = "^3.9.1.post1"
 
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.2"
-sphinx = "^8.0.2"
 
 [build-system]
 requires = ["poetry-core"]
