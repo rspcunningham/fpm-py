@@ -14,7 +14,8 @@ def reconstruct(
     output_scale_factor: int = None,
     pupil_0: torch.Tensor = None,
     iteration_terminator: TerminatorType = iter_ceil,
-    optimizer: OptimizerType = tomas
+    optimizer: OptimizerType = tomas,
+    **kwargs
 ) -> torch.Tensor:
     """
     Core algorithm. Reconstructs an object from a series of images.
@@ -66,7 +67,7 @@ def reconstruct(
     terminator_inputs = TerminatorInputs(object, wave_fourier, wave_fourier_new, i)
 
     # Main reconstruction loop
-    while not iteration_terminator(terminator_inputs):
+    while not iteration_terminator(terminator_inputs, **kwargs):
         for _, data in enumerate(image_series.image_stack):
 
             image = data.image
@@ -111,7 +112,7 @@ def reconstruct(
 
             # Optimize object and pupil
             optimizer_inputs = OptimizerInputs(object, pupil, wave_fourier, wave_fourier_new, x, y)
-            object, pupil = optimizer(optimizer_inputs)
+            object, pupil = optimizer(optimizer_inputs, **kwargs)
 
 
         # Increment iteration counter
