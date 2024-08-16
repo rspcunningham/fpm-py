@@ -3,7 +3,6 @@ This module contains the `ImageCapture` and `ImageSeries` classes, which are the
 """
 
 from dataclasses import dataclass, field
-import numpy as np
 import torch
 
 # Set up the device
@@ -57,32 +56,32 @@ class ImageSeries:
     Args:
         image_stack (list[ImageCapture]): A list of ImageCapture objects
         optical_magnification (float): The optical magnification of the images
-        pixel_size (float): The physical size of a pixel in the image, in micrometers
-        effective_magnification (float): The effective magnification of the images. If not provided, it will be calculated as optical_magnification / pixel_size
+        sensor_pixel_size (float): The physical size of a pixel in the image, in micrometers
+        object_pixel_size (float): The effective magnification of the images. If not provided, it will be calculated as optical_magnification / sensor_pixel_size
     
     Raises:
         ValueError: If the images in the stack do not have the same shape
-        ValueError: If effective_magnification is not provided and both optical_magnification and pixel_size are not provided
+        ValueError: If object_pixel_size is not provided and both optical_magnification and sensor_pixel_size are not provided
     """
     image_stack: list[ImageCapture]
     optical_magnification: float = None
-    pixel_size: float = None
-    effective_magnification: float = None
+    sensor_pixel_size: float = None
+    object_pixel_size: float = None
     device: torch.device = field(init=False)
     du: float = field(init=False)
     image_size: tuple[int, int] = field(init=False)
     max_k: torch.Tensor = field(init=False)
 
     def __post_init__(self):
-        if self.effective_magnification is None:
+        if self.object_pixel_size is None:
             try: 
-                self.effective_magnification = self.optical_magnification / self.pixel_size
+                self.object_pixel_size = self.optical_magnification / self.sensor_pixel_size
             except:
-                raise ValueError("effective_magnification or both optical_magnification and pixel_size must be provided as floats")
+                raise ValueError("object_pixel_size or both optical_magnification and sensor_pixel_size must be provided as floats")
             
         self.device = get_device()
         
-        self.du = self.effective_magnification / self.image_stack[0].image.shape[0]
+        self.du = self.object_pixel_size / self.image_stack[0].image.shape[0]
 
         # Ensure all images have the same shape
         self.image_size = self.image_stack[0].image.shape
@@ -117,12 +116,12 @@ class ImageSeries:
             ImageCapture(item["image"].to(device=get_device()), item["k_vector"].to(device=get_device())) 
             for item in data["image_stack"]
         ]
-        return ImageSeries(image_stack, data["optical_magnification"], data["pixel_size"])
+        return ImageSeries(image_stack, data["optical_magnification"], data["sensor_pixel_size"])
     
     @staticmethod
     def load(path: str):
         
-        torch.serialization.add_safe_globals(['image_stack', 'optical_magnification', 'pixel_size'])
+        torch.serialization.add_safe_globals(['image_stack', 'optical_magnification', 'sensor_pixel_size'])
         data = torch.load(path, weights_only=True)
 
         return ImageSeries.from_dict(data)
@@ -134,8 +133,8 @@ class ImageSeries:
         return {
             "image_stack": [{"image": item.image.cpu().numpy().tolist(), "k_vector": item.k_vector.cpu().numpy().tolist()} for item in self.image_stack],
             "optical_magnification": self.optical_magnification,
-            "pixel_size": self.pixel_size,
-            "effective_magnification": self.effective_magnification,
+            "sensor_pixel_size": self.sensor_pixel_size,
+            "object_pixel_size": self.object_pixel_size,
             "device": str(self.device),
             "du": self.du,
             "image_size": self.image_size
