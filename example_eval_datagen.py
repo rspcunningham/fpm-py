@@ -1,7 +1,9 @@
 import numpy as np
 import cv2
-import fpm_py as fpm
 import matplotlib.pyplot as plt
+
+import fpm_py as fpm
+from fpm_py.evaluation import sail
 
 # Load a single-channel (grayscale) image using OpenCV.
 # The image is used as the high-quality object (target) for generating synthetic data.
@@ -44,8 +46,13 @@ for item in image_series.image_stack:
 
 # Reconstruct a high-resolution image from the series of low-resolution images.
 # The `output_scale_factor` determines how much the resolution is increased.
-output = fpm.reconstruct(image_series, output_scale_factor=4)
+output = fpm.reconstruct(image_series, output_image_size=object_output.shape).abs().cpu().numpy()
 
 # Display the magnitude of the reconstructed high-resolution image.
-plt.imshow(output.abs().cpu().numpy(), cmap='gray')  # Convert the tensor to NumPy array and display in grayscale.
+plt.imshow(output, cmap='gray')  # Convert the tensor to NumPy array and display in grayscale.
 plt.show()
+
+# Evaluate the reconstruction using the SAIL metric.
+sail_value = sail(object_output, output)
+
+print(f"SAIL value: {sail_value}")

@@ -15,6 +15,7 @@ homepage = "https://www.parasight.ca"
 python = "^3.12"
 torch = "^2.4.0"
 numpy = "^2.1.0"
+scipy = "^1.14.0"
 
 
 [tool.poetry.group.dev.dependencies]
