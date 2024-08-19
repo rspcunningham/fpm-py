@@ -9,6 +9,8 @@ from .iteration_terminators import *
 
 import torch
 
+from matplotlib import pyplot as plt
+
 def reconstruct(
     image_series: ImageSeries,
     output_scale_factor: int = None,

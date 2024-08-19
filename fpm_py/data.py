@@ -40,7 +40,8 @@ class ImageCapture:
             raise ValueError("k_vector must be a tensor with shape [k_x, k_y]")
         
         # Ensure both tensors are on the same device
-        device = self.image.device
+        device = get_device()
+        self.image = self.image.to(device)
         self.k_vector = self.k_vector.to(device)
         
         # Ensure correct data types
@@ -64,6 +65,8 @@ class ImageSeries:
         ValueError: If object_pixel_size is not provided and both optical_magnification and sensor_pixel_size are not provided
     """
     image_stack: list[ImageCapture]
+    wavelength: float = None
+    numerical_aperture: float = None
     optical_magnification: float = None
     sensor_pixel_size: float = None
     object_pixel_size: float = None
@@ -91,11 +94,6 @@ class ImageSeries:
             
         self.image_size = torch.tensor(self.image_size, device=self.device)
         
-        # ensure all images are on the same device
-        self.device = self.image_stack[0].image.device
-        for image in self.image_stack[1:]:
-            image.image = image.image.to(self.device)
-
         # Calculate the maximum k values
         k_vectors = torch.stack([item.k_vector for item in self.image_stack])
         self.max_k = torch.max(torch.abs(k_vectors), dim=0)[0]
