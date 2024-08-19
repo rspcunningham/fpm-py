@@ -1,9 +1,6 @@
 import numpy as np
-import cv2
 import fpm_py as fpm
 import torch
-
-from matplotlib import pyplot as plt
 
 def k_vect_from_um(wavelength: float, x: float, y: float, z: float) -> np.ndarray:
     """Expects x, y, z positions in micrometers and returns the corresponding k-vector in the Fourier domain."""
@@ -124,41 +121,5 @@ def generate_data(
         capture_list.append(capture)
     
     image_series = fpm.ImageSeries(capture_list, wavelength=wavelength, numerical_aperture=numerical_aperture, optical_magnification=optical_magnification, sensor_pixel_size=sensor_pixel_size)
+    
     return image_series
-
-if __name__ == '__main__':
-    object_output = cv2.imread('fpm_py/experimental/object.tiff', cv2.IMREAD_GRAYSCALE)
-    phase_output = cv2.imread('fpm_py/experimental/phase.tiff', cv2.IMREAD_GRAYSCALE)
-    wavelength = 0.525
-    optical_magnification = 1.7
-    sensor_pixel_size = 1.12
-    numerical_aperture = 0.15
-    led_to_object_distance = 60500
-    led_positions = np.array([
-        [10000, 0],
-        [0, 10000],
-        [10000, 10000],
-    ])
-    desired_input_shape = (512, 512)
-
-    image_series = generate_data(
-        object_output,
-        phase_output,
-        wavelength,
-        optical_magnification,
-        sensor_pixel_size,
-        numerical_aperture,
-        led_to_object_distance,
-        led_positions,
-        desired_input_shape
-    )
-
-    for item in image_series.image_stack:
-        im = item.image.cpu().numpy().astype(np.uint16)
-        plt.imshow(im, cmap='gray')
-        plt.show()
-
-    output = fpm.reconstruct(image_series, output_scale_factor=4)
-
-    plt.imshow(output.abs().cpu().numpy(), cmap='gray')
-    plt.show()
