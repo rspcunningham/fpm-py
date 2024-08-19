@@ -3,7 +3,7 @@ import cv2
 import matplotlib.pyplot as plt
 
 import fpm_py as fpm
-from fpm_py.evaluation import sail
+from fpm_py.evaluation import sail, rmse
 
 object_output = cv2.imread('datasets/hq_object.png', cv2.IMREAD_GRAYSCALE)
 
@@ -31,6 +31,24 @@ def calculate_sail(led_positions) -> float:
     sail_value = sail(object_output, output)
 
     return output, sail_value
+
+def calculate_rmse(led_positions) -> float:
+    image_series = fpm.generate_data(
+        object_output,
+        None,  # Assuming output phase is zero.
+        wavelength,
+        optical_magnification,
+        sensor_pixel_size,
+        numerical_aperture,
+        led_positions,
+        desired_input_shape
+    )
+
+    output = fpm.reconstruct(image_series, max_iters=20).abs().cpu().numpy()
+
+    rmse_value = rmse(object_output, output)
+
+    return output, rmse_value
 
 
 def generate_fermat_spiral_3d(num_points: int, scaling_factor: float, z_value: float) -> np.ndarray:
@@ -78,6 +96,7 @@ def plot_fermat_spiral_3d(points: np.ndarray):
     ax.grid(True)
     plt.show()
 
+
 # Generate Fermat spiral points in 3D
 num_points = 100
 #scaling_factor = [10, 100, 1000, 10000, 100000]
@@ -104,5 +123,18 @@ for i, res in enumerate(results):
     output, sail_value = res
     axs[i].imshow(output, cmap='gray')
     axs[i].set_title(f"SAIL score: {sail_value}")
+
+plt.show()
+
+# Apply RMSE calculation to each LED position configuration
+results = [calculate_rmse(led_position) for led_position in led_positions]
+
+# Create subplots to show the results and corresponding RMSE scores
+fig, axs = plt.subplots(1, len(results), figsize=(15, 5))
+
+for i, res in enumerate(results):
+    output_image, rmse_value = res  # Assuming the function returns a tuple of (reconstructed_image, RMSE_value)
+    axs[i].imshow(output_image, cmap='gray')
+    axs[i].set_title(f"RMSE score: {rmse_value:.4f}")
 
 plt.show()
