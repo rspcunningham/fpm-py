@@ -8,28 +8,28 @@ from .optimizers import *
 from .iteration_terminators import *
 from .algorithm import *
 
-from scipy.integrate import trapz
+import numpy as np
 
-def sail(original_image: ImageCapture, recon_image: ImageCapture) -> float:
+def sail(reference_image: np.ndarray, recon_image: np.ndarray) -> float:
     """
     SAIL (Spectrum Alignment Index with Localization) evaluation metric. Value between 0 and 1 to depict the algorithm performance based on the original and reconstructed image.
 
     Args:
-        original_image (ImageCapture): The original image used as reference.
-        recon_image (ImageCapture): The reconstructed image as a result of the algorithm. This is the image being evaluated.
+        original_image (np.ndarray): The original image used as reference.
+        recon_image (np.ndarray): The reconstructed image as a result of the algorithm. This is the image being evaluated.
     
     Returns:
         float: SAIL value between 0 and 1.
     """
 
     # Step 1: Check that images are aligned, what do we do if they are not aligned? Something with that output scale factor?
-    assert original_image.shape == recon_image.shape, "Original and reconstructed images must be of the same size."
+    assert reference_image.shape == recon_image.shape, "Original and reconstructed images must be of the same size."
     
     # Step 2: Convert both images to frequency domain using a 2D Fourier Transform
-    original_fft, recon_fft = ft(original_image), ft(recon_image)
+    original_fft, recon_fft = np.fft.fft2(reference_image), np.fft.fft2(recon_image)
     
     # Step 3: Calculate the radial frequencies (concentric rings)
-    height, width = original_image.shape
+    height, width = reference_image.shape
     center_y, center_x = height // 2, width // 2
     y, x = np.indices((height, width))
     radius = np.sqrt((x - center_x)**2 + (y - center_y)**2) 
@@ -57,9 +57,9 @@ def sail(original_image: ImageCapture, recon_image: ImageCapture) -> float:
     spatial_frequencies = np.arange(1, num_rings)  # Corresponds to the radius of each ring
     
     # Step 6: Compute Area Under the Curve (AUC) of the FRC curve using trapezoidal rule
-    auc = trapz(frc_values, spatial_frequencies)
+    auc = np.trapz(frc_values, spatial_frequencies)
     # Normalize the AUC by the maximum possible AUC (which would be the area if FRC = 1 for all rings)
-    max_auc = trapz(np.ones_like(frc_values), spatial_frequencies)
+    max_auc = np.trapz(np.ones_like(frc_values), spatial_frequencies)
     
     # Step 7: Return the normalized AUC as the SAIL score
     sail = auc / max_auc
