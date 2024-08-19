@@ -31,6 +31,9 @@ def generate_data(
     max_spatial_frequency = numerical_aperture / wavelength
     num_leds = led_positions.shape[0]
 
+    if phase_output is None:
+        phase_output = np.zeros_like(object_output)
+    
     synthetic_object = object_output * np.exp(1j * phase_output)
 
     led_positions_x = led_positions[:, 0]
