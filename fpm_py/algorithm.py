@@ -14,6 +14,7 @@ from matplotlib import pyplot as plt
 def reconstruct(
     image_series: ImageSeries,
     output_scale_factor: int = None,
+    output_image_size: tuple = None,
     pupil_0: torch.Tensor = None,
     iteration_terminator: TerminatorType = iter_ceil,
     optimizer: OptimizerType = tomas,
@@ -45,12 +46,12 @@ def reconstruct(
         raise ValueError("The pupil and image sizes do not match.")
     
     # assign the minimum needed output image size
-    if output_scale_factor is None:
+    if output_image_size is None and output_scale_factor is None:
         k_span = image_series.image_size // 2
         total = k_span + image_series.max_k // image_series.du
         output_image_size = image_series.image_size * total // k_span + 1
         output_image_size = [int(x.item()) for x in output_image_size]
-    else: 
+    elif output_image_size is None: 
         output_image_size = [x * output_scale_factor for x in image_series.image_size]
     
     # Convert pupil_0 to PyTorch tensor and move to device
