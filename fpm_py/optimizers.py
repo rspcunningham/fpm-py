@@ -9,9 +9,7 @@ All Optimizer functions can only accept one positional argument of type: Optimiz
 import torch
 from typing import Callable
 from dataclasses import dataclass
-import matplotlib.pyplot as plt
-
-from .utils import overlap_matrices, ift, ft
+from .utils import overlap_matrices
 
 @dataclass
 class OptimizerInputs:

@@ -6,7 +6,7 @@ authors = [
     "Robin Cunningham <rspcunningham@gmail.com>", 
     "Sammy Farnum <sfarnum1132@gmail.com>"
 ]
-readme = "MODULE_README.md"
+readme = "README.md"
 license = "MIT"
 repository = "https://github.com/rspcunningham/fpm-py"
 homepage = "https://www.parasight.ca"
@@ -14,10 +14,13 @@ homepage = "https://www.parasight.ca"
 [tool.poetry.dependencies]
 python = "^3.12"
 torch = "^2.4.0"
+numpy = "^2.1.0"
 
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^8.3.2"
+numpy = "^2.0.1"
+matplotlib = "^3.9.2"
+opencv-python = "^4.10.0.84"
 
 [build-system]
 requires = ["poetry-core"]
