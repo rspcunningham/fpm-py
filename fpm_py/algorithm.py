@@ -8,6 +8,7 @@ from .optimizers import *
 from .iteration_terminators import *
 
 import torch
+import numpy as np
 
 from matplotlib import pyplot as plt
 
@@ -47,10 +48,15 @@ def reconstruct(
     
     # assign the minimum needed output image size
     if output_image_size is None and output_scale_factor is None:
-        k_span = image_series.image_size // 2
-        total = k_span + image_series.max_k // image_series.du
-        output_image_size = image_series.image_size * total // k_span + 1
-        output_image_size = [int(x.item()) for x in output_image_size]
+        print("Output image size not provided. Calculating minimum needed size.")
+
+        max_x, max_y = (image_series.max_k[0] // image_series.du, image_series.max_k[1] // image_series.du)
+        output_image_size = (torch.abs(max_x) * 2 + 2 + image_series.image_size[0], torch.abs(max_y) * 2 + 2 + image_series.image_size[1])
+
+        output_image_size = (int(output_image_size[0].item()), int(output_image_size[1].item()))
+
+        print(f"Output image size: {output_image_size}")
+
     elif output_image_size is None: 
         output_image_size = [x * output_scale_factor for x in image_series.image_size]
     
@@ -80,9 +86,7 @@ def reconstruct(
                 # Initialize object with first image
                 object = torch.zeros(output_image_size, dtype=torch.complex64, device=image_series.device)
                 pupil = pupil_0
-
                 x, y = kvector_to_x_y(fourier_center, image_series.image_size, image_series.du, k_vector)
-
                 wave_fourier_new = ft(torch.sqrt(image))
                 object = overlap_matrices(object, wave_fourier_new * pupil, x, y)
                 
@@ -90,7 +94,6 @@ def reconstruct(
 
             # Calculate x and y coordinates for the current image
             x, y = kvector_to_x_y(fourier_center, image_series.image_size, image_series.du, k_vector)
-
 
             # Extract the relevant part of the object and multiply by pupil
             wave_fourier = object[x:x+image_series.image_size[0], y:y+image_series.image_size[1]] * pupil

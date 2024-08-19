@@ -96,7 +96,7 @@ class ImageSeries:
         
         # Calculate the maximum k values
         k_vectors = torch.stack([item.k_vector for item in self.image_stack])
-        self.max_k = torch.max(torch.abs(k_vectors), dim=0)[0]
+        self.max_k = torch.max(torch.abs(k_vectors), dim=0).values
 
     @staticmethod
     def from_dict(data: dict):

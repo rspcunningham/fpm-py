@@ -28,7 +28,7 @@ class TerminatorInputs:
 
 TerminatorType = Callable[[TerminatorInputs], bool]
 
-def iter_ceil(inputs: TerminatorInputs, max_iters: int = 10) -> bool:
+def iter_ceil(inputs: TerminatorInputs, max_iters: int = 10, **kwargs) -> bool:
     """
     Simple iteration terminator that stops after a given number of iterations.
     Args:

@@ -60,10 +60,11 @@ def overlap_matrices(larger: torch.Tensor, smaller: torch.Tensor, bottom: int, l
     # Get the dimensions of the smaller matrix
     rows, cols = smaller.shape
     # Calculate the starting indices in the larger matrix
-    start_row = bottom - rows + 1
+    start_row = bottom
     start_col = left
     # Ensure the indices are within the bounds of the larger matrix
     if start_row < 0 or start_col < 0 or start_row + rows > larger.shape[0] or start_col + cols > larger.shape[1]:
+        print(start_row, start_col, smaller.shape, larger.shape)
         raise ValueError("Matrix B cannot be placed at the specified position in matrix A.")
     
     # Add smaller matrix to the larger matrix

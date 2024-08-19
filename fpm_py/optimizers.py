@@ -42,7 +42,8 @@ def quasi_second_order(
         alpha_o: float = 1,
         mu_o: float = 1,
         alpha_p: float = 1,
-        mu_p: float = 1
+        mu_p: float = 1,
+        **kwargs
     ) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Simple gradient descent optimizer with learning rate and regularization hyperparams for object and pupil.
@@ -78,7 +79,7 @@ def quasi_second_order(
 
     return inputs.object, inputs.pupil
 
-def tomas(inputs: OptimizerInputs, alpha: float = 1, beta: float = 1000) -> tuple[torch.Tensor, torch.Tensor]:
+def tomas(inputs: OptimizerInputs, alpha: float = 1, beta: float = 1000, **kwargs) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Tomas' optimizer with learning rate and regularization hyperparams for object and pupil.
 

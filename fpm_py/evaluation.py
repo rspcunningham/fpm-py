@@ -9,6 +9,7 @@ from .iteration_terminators import *
 from .algorithm import *
 
 import numpy as np
+import cv2
 
 def sail(reference_image: np.ndarray, recon_image: np.ndarray) -> float:
     """
@@ -23,7 +24,9 @@ def sail(reference_image: np.ndarray, recon_image: np.ndarray) -> float:
     """
 
     # Step 1: Check that images are aligned, what do we do if they are not aligned? Something with that output scale factor?
-    assert reference_image.shape == recon_image.shape, "Original and reconstructed images must be of the same size."
+    if reference_image.shape != recon_image.shape:
+        # use numpy to resize recon_image to the shape of reference_image
+        recon_image = cv2.resize(recon_image, reference_image.shape[::-1])
     
     # Step 2: Convert both images to frequency domain using a 2D Fourier Transform
     original_fft, recon_fft = np.fft.fft2(reference_image), np.fft.fft2(recon_image)
