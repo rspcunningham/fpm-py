@@ -5,6 +5,9 @@ import matplotlib.pyplot as plt
 import fpm_py as fpm
 from fpm_py.evaluation import sail
 
+import lpips
+loss_fn_alex = lpips.LPIPS(net='alex') # best forward scores
+
 object_output = cv2.imread('datasets/hq_object.png', cv2.IMREAD_GRAYSCALE)
 
 # Define parameters for generating synthetic low-resolution images.
@@ -28,9 +31,10 @@ def calculate_sail(led_positions) -> float:
 
     output = fpm.reconstruct(image_series, max_iters=20).abs().cpu().numpy()
 
+    alex_value = loss_fn_alex(object_output, output)
     sail_value = sail(object_output, output)
 
-    return output, sail_value
+    return output, sail_value, alex_value
 
 
 def generate_fermat_spiral_3d(num_points: int, scaling_factor: float, z_value: float) -> np.ndarray:
@@ -61,7 +65,7 @@ def generate_fermat_spiral_3d(num_points: int, scaling_factor: float, z_value: f
     
     return np.column_stack((x, y, z))
 
-def plot_fermat_spiral_3d(points: np.ndarray):
+def plot_3d_points(points: np.ndarray):
     """
     Plots the points of a Fermat spiral in 3D space.
 
@@ -71,7 +75,6 @@ def plot_fermat_spiral_3d(points: np.ndarray):
     fig = plt.figure(figsize=(8, 8))
     ax = fig.add_subplot(111, projection='3d')
     ax.plot(points[:, 0], points[:, 1], points[:, 2], 'bo', markersize=2)
-    ax.set_title("Fermat Spiral in 3D")
     ax.set_xlabel("x")
     ax.set_ylabel("y")
     ax.set_zlabel("z")
@@ -94,15 +97,15 @@ led_positions = [
 ]])
 """
 for positions in led_positions:
-    plot_fermat_spiral_3d(positions)
+    plot_3d_points(positions)
 
 results = [calculate_sail(led_position) for led_position in led_positions]
 
 fig, axs = plt.subplots(1, len(results), figsize=(15, 5))
 
 for i, res in enumerate(results):
-    output, sail_value = res
+    output, sail_value, alex_value = res
     axs[i].imshow(output, cmap='gray')
-    axs[i].set_title(f"SAIL score: {sail_value}")
+    axs[i].set_title(f"SAIL score: {sail_value}\nLPIPS score: {alex_value}")
 
 plt.show()

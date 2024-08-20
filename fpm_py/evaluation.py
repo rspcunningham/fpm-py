@@ -58,6 +58,13 @@ def sail(reference_image: np.ndarray, recon_image: np.ndarray) -> float:
     
     # Step 5: Generate the FRC curve (using the radial frequencies)
     spatial_frequencies = np.arange(1, num_rings)  # Corresponds to the radius of each ring
+
+    import matplotlib.pyplot as plt
+    plt.plot(spatial_frequencies, frc_values)
+    plt.xlabel('Spatial Frequency (pixels)')
+    plt.ylabel('FRC')
+    plt.title('Frequency Resolution Criterion (FRC) Curve')
+    plt.show()
     
     # Step 6: Compute Area Under the Curve (AUC) of the FRC curve using trapezoidal rule
     auc = np.trapz(frc_values, spatial_frequencies)
