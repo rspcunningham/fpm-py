@@ -21,7 +21,8 @@ def generate_data(
         sensor_pixel_size: float,
         numerical_aperture: float,
         led_positions: np.ndarray,
-        desired_input_shape: tuple
+        desired_input_shape: tuple,
+        z_value: float = None
 ) -> fpm.ImageSeries:
     
     object_pixel_size = sensor_pixel_size / optical_magnification
@@ -35,7 +36,11 @@ def generate_data(
 
     led_positions_x = led_positions[:, 0]
     led_positions_y = led_positions[:, 1]
-    led_positions_z = led_positions[:, 2]
+
+    if z_value: 
+        led_positions_z = np.ones_like(led_positions_x) * z_value
+    else:
+        led_positions_z = led_positions[:, 2]
 
     led_distances = np.sqrt(led_positions_x ** 2 + led_positions_y ** 2 + led_positions_z ** 2)
     sin_theta_x = led_positions_x / led_distances
