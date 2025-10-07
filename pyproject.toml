@@ -1,28 +1,43 @@
-[tool.poetry]
-name = "fpm-py"
-version = "0.0.0"
-description = "A Python library for implementing Fourier ptychography algorithms to enhance captured images"
-authors = [
-    "Robin Cunningham <rspcunningham@gmail.com>", 
-    "Sammy Farnum <sfarnum1132@gmail.com>"
-]
-readme = "README.md"
-license = "MIT"
-repository = "https://github.com/rspcunningham/fpm-py"
-homepage = "https://www.parasight.ca"
-
-[tool.poetry.dependencies]
-python = "^3.12"
-torch = "^2.4.0"
-numpy = "^2.1.0"
-scipy = "^1.14.0"
-
-
-[tool.poetry.group.dev.dependencies]
-numpy = "^2.0.1"
-matplotlib = "^3.9.2"
-opencv-python = "^4.10.0.84"
-
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["setuptools>=67", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fpm-py"
+version = "2.0.0"
+description = "Fourier ptychography tooling for simulation and reconstruction"
+readme = "README.md"
+requires-python = ">=3.9,<3.13"
+license = {text = "MIT"}
+authors = [
+    {name = "Robin Cunningham", email = "rspcunningham@gmail.com"},
+]
+keywords = ["fourier", "ptychography", "microscopy", "imaging", "reconstruction"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
+dependencies = [
+    "matplotlib>=3.9.4",
+    "scikit-image>=0.24.0",
+    "scipy>=1.13.1",
+    "seaborn>=0.13.2",
+    "torch>=2.8.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/rspcunningham/fpm-py"
+Repository = "https://github.com/rspcunningham/fpm-py"
+Issues = "https://github.com/rspcunningham/fpm-py/issues"
+
+[tool.pyright]
+reportMissingTypeStubs = false
+reportUnknownReturnType = "error"
+reportUnknownParameterType = "error"
