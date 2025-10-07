@@ -34,7 +34,7 @@ jobs:
     - name: Update version from git tag
       run: |
         VERSION=$(git describe --tags --abbrev=0 | sed 's/^v//')
-        sed -i "s/version = \".*\"/version = \"$VERSION\"/" pyproject.toml
+        python -c "import sys; content = open('pyproject.toml').read(); content = content.replace('version = \"2.0.0\"', f'version = \"{sys.argv[1]}\"'); open('pyproject.toml', 'w').write(content)" "$VERSION"
 
     - name: Build package
       run: uv build
