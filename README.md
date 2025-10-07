@@ -2,13 +2,7 @@
 
 A Python library for Fourier Ptychographic Microscopy (FPM) simulation and reconstruction.
 
-## Features
-
 - **Forward & Backward Models**: Simulate FPM captures and reconstruct high-resolution images
-- **Advanced Analysis**: Comprehensive metrics and visualization tools
-- **Type-Safe**: Full type hints with strict Pyright validation
-- **GPU Accelerated**: Supports CUDA and Apple Silicon (MPS)
-- **Flexible**: Direct k-vector specification or physical LED array conversion
 
 ## Installation
 
