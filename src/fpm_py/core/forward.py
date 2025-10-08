@@ -99,10 +99,10 @@ def _single_capture_update(
 
     # optimiser step (in-place updates)
     obj_est, pupil = _update_obj_pupil(obj_est, pupil, wave_fourier, wave_fourier_new, x, y)
-    
+
     # enforce binary pupil support after optimization as well
     pupil.mul_(pupil_binary)
-    
+
     return obj_est, pupil, wave_fourier_new
 
 
@@ -114,7 +114,7 @@ def reconstruct(
     max_iters: int = 10,
 ) -> torch.Tensor:
     """Fourier ptychographic reconstruction entry-point.
-    
+
     Args:
         series: Image series containing captures and acquisition settings
         output_scale_factor: Optional scale factor for output size
@@ -124,17 +124,17 @@ def reconstruct(
         optimizer: Function to update object and pupil estimates
         check_for_nans: Whether to check for NaNs during iterations
         **kwargs: Additional arguments passed to terminator and optimizer
-        
+
     Returns:
         torch.Tensor: Reconstructed complex-valued object in spatial domain
-        
+
     Notes:
         Output size selection uses the following priority:
         1. User-provided output_image_size
         2. Size calculated from output_scale_factor
         3. Auto-calculated minimum size needed for reconstruction
-        
-        For optimal FFT processing, all output sizes are forced to even dimensions.    
+
+        For optimal FFT processing, all output sizes are forced to even dimensions.
     """
 
     # Disable autograd for entire reconstruction process
@@ -196,7 +196,7 @@ def reconstruct(
         # ------------------------------------------------------------------
         while i < max_iters:
             print(f"Starting iteration {i}")
-            
+
             for cap in series.captures:
                 obj_est, pupil, wave_new = _single_capture_update(
                     obj_est=obj_est,
@@ -207,7 +207,7 @@ def reconstruct(
                     fourier_center=fourier_center,
                     pupil_binary=pupil_binary,
                 )
-            
+
             i += 1
             print(f"Completed iteration {i}")
 
