@@ -57,6 +57,8 @@ plt.imshow(reconstruction.abs().cpu().numpy(), cmap='gray')
 plt.show()
 ```
 
+For a more detailed walkthrough, see [main.py](https://github.com/yourusername/fpm-py/tree/main/main.py).
+
 ## Core Concepts
 
 ### Data Structures
