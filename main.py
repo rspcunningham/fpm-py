@@ -2,6 +2,9 @@ from fpm_py import reconstruct, kvectors_to_image_series, image_to_tensor
 from fpm_py.analysis import plot_comparison_with_histograms
 import matplotlib.pyplot as plt
 import torch
+from loguru import logger
+
+from fpm_py.core.backward import xyz_to_kxky
 
 
 # Step 1: Load the target image
@@ -14,19 +17,28 @@ full_image = image_to_tensor("data/bars.png", to_complex=True)
 wavelength = 550e-9  # 550 nm (green light)
 pixel_size = 1e-6    # 1 µm
 pupil_radius = 100    # pixels
-magnification = 10.0  # 10x
+magnification = 1.0  # 10x
 
-# Create a 5x5 grid of k-vectors
-# TODO: implement (x, y, z) --> (kx, ky)
-grid_size = 5
-spacing = 0.2
+z = 100e-3  # 100 mm
+x_spacing = 10e-3 # 10 mm
+y_spacing = 10e-3 # 10 mm
 
-k_range = torch.linspace(-(grid_size // 2), grid_size // 2, grid_size) * spacing
-kx_vals, ky_vals = torch.meshgrid(k_range, k_range, indexing="ij")
-k_vectors = torch.stack((kx_vals.flatten(), ky_vals.flatten()), dim=1)
+points = [
+    (-2*x_spacing, -2*y_spacing, z),
+    (-2*x_spacing, 0, z),
+    (-2*x_spacing, 2*y_spacing, z),
+    (0, -2*y_spacing, z),
+    (0, 0, z),
+    (0, 2*y_spacing, z),
+    (2*x_spacing, -2*y_spacing, z),
+    (2*x_spacing, 0, z),
+    (2*x_spacing, 2*y_spacing, z)
+]
 
-print(f"Generated {k_vectors.shape[0]} k-vectors for a {grid_size}x{grid_size} grid")
-print(f"K-vector range: min={k_vectors.min().item():.3f}, max={k_vectors.max().item():.3f}")
+k_vectors = torch.stack([xyz_to_kxky(point, wavelength, pixel_size, 9.48e-3, 9.48e-3) for point in points])
+
+logger.info(f"Generated {len(k_vectors)} k-vectors")
+logger.info(f"K vectors: {k_vectors}")
 
 # Step 3: Backwards pass (target + k-vectors --> captures)
 
@@ -39,13 +51,13 @@ dataset = kvectors_to_image_series(
     magnification=magnification
 )
 
-print(f"Dataset generated with {len(dataset.captures)} captures using direct k-vectors.")
+logger.info(f"Dataset generated with {len(dataset.captures)} captures using direct k-vectors.")
 
 # Step 4: Forward pass (captures + k-vectors --> reconstruction)
 
 target = full_image.abs().cpu().numpy()
-output1 = reconstruct(dataset, output_scale_factor=4, max_iters=1).abs().cpu().numpy()
-output2 = reconstruct(dataset, output_scale_factor=4, max_iters=10).abs().cpu().numpy()
+output1 = reconstruct(dataset, output_scale_factor=10, max_iters=1).abs().cpu().numpy()
+output2 = reconstruct(dataset, output_scale_factor=10, max_iters=10).abs().cpu().numpy()
 
 # Step 5: Assess the outputs
 

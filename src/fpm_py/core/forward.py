@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from typing import Optional, Tuple
+import time
 import torch
+from loguru import logger
 
 from ..utils.math_utils import overlap_matrices, circle_like, ft, ift, kvector_to_x_y
 from .structs import ImageSeries, ImageCapture
@@ -136,6 +138,7 @@ def reconstruct(
 
         For optimal FFT processing, all output sizes are forced to even dimensions.
     """
+    start_time = time.perf_counter()
 
     # Disable autograd for entire reconstruction process
     with torch.no_grad():
@@ -195,8 +198,6 @@ def reconstruct(
         #  Main loop
         # ------------------------------------------------------------------
         while i < max_iters:
-            print(f"Starting iteration {i}")
-
             for cap in series.captures:
                 obj_est, pupil, wave_new = _single_capture_update(
                     obj_est=obj_est,
@@ -209,11 +210,14 @@ def reconstruct(
                 )
 
             i += 1
-            print(f"Completed iteration {i}")
 
             if torch.isnan(obj_est).any():
                 raise RuntimeError("NaN values detected in object estimate - failed to converge")
 
-
         # Final transform to spatial domain
-        return ift(obj_est)
+        result = ift(obj_est)
+
+        elapsed_time = time.perf_counter() - start_time
+        logger.info(f"Reconstruction completed in {elapsed_time:.2f}s ({max_iters} iterations, {len(series.captures)} captures)")
+
+        return result

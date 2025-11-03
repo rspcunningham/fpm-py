@@ -3,6 +3,8 @@ from dataclasses import dataclass, field
 import torch
 from typing import Sequence
 
+__all__ = ["ImageCapture", "AcquisitionSettings", "ImageSeries"]
+
 # ----------  per-capture  ----------
 @dataclass(slots=True, frozen=True)
 class ImageCapture:

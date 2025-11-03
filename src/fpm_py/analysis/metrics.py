@@ -1,3 +1,4 @@
+from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 import matplotlib.pyplot as plt
@@ -8,6 +9,8 @@ from scipy import stats
 from skimage.metrics import structural_similarity as ssim
 from skimage.transform import resize
 
+__all__ = ["plot_comparison_with_histograms"]
+
 # Set Seaborn style
 sns.set_style("whitegrid")
 plt.rcParams['font.family'] = 'sans-serif'
@@ -17,7 +20,7 @@ def plot_comparison_with_histograms(
     titles: list[str] | None = None,
     figsize: tuple[int, int]=(16, 16),
     reference_idx: int = 0
-) -> tuple[Figure, dict[str, list[float] | list[tuple[int, ...]] | list[bool] | list[str]]]:
+) -> tuple[Figure, dict[str, list[tuple[int, ...]] | list[np.floating[Any]] | list[bool] | list[str]]]:
 
     """
     Plot multiple images with their histograms, Fourier spectra, and calculate statistical measures.
@@ -42,16 +45,14 @@ def plot_comparison_with_histograms(
         Dictionary of statistical measures for comparison
     """
 
-    # Check inputs
-    if not isinstance(images, (list, tuple)) or len(images) < 1:
-        raise ValueError("images must be a list/tuple containing at least one image")
-
     n_images = len(images)
 
     # Normalize images to 0-1 range
-    def normalize(img: NDArray[np.float64]) -> NDArray[np.float64]:
-        img_min, img_max = img.min(), img.max()
-        return (img - img_min) / (img_max - img_min) if img_max > img_min else img
+    def normalize(img: NDArray[np.floating[Any]]) -> NDArray[np.float64]:
+        img_min: np.floating[Any] = img.min()
+        img_max: np.floating[Any] = img.max()
+        result = (img - img_min) / (img_max - img_min) if img_max > img_min else img
+        return result.astype(np.float64)
 
     # Keep original normalized images for display
     norm_images = [normalize(img) for img in images]
@@ -66,17 +67,17 @@ def plot_comparison_with_histograms(
     flat_images = [img.flatten() for img in norm_images]
 
     # Basic statistics (these work regardless of image dimensions)
-    stats_dict = {
+    stats_dict: dict[str, list[tuple[int, ...]] | list[np.floating[Any]] | list[bool] | list[str]] = {
         'dimensions': [img.shape for img in norm_images],
-        'mean': [np.mean(flat) for flat in flat_images],
-        'median': [np.median(flat) for flat in flat_images],
-        'std_dev': [np.std(flat) for flat in flat_images],
-        'min': [np.min(flat) for flat in flat_images],
-        'max': [np.max(flat) for flat in flat_images],
-        'dynamic_range': [np.max(flat) - np.min(flat) for flat in flat_images],
-        'skewness': [stats.skew(flat) for flat in flat_images],
-        'kurtosis': [stats.kurtosis(flat) for flat in flat_images],
-        'entropy': [stats.entropy(np.histogram(flat, bins=256)[0]) for flat in flat_images]
+        'mean': [np.float64(np.mean(flat)) for flat in flat_images],
+        'median': [np.float64(np.median(flat)) for flat in flat_images],
+        'std_dev': [np.float64(np.std(flat)) for flat in flat_images],
+        'min': [np.float64(np.min(flat)) for flat in flat_images],
+        'max': [np.float64(np.max(flat)) for flat in flat_images],
+        'dynamic_range': [np.float64(np.max(flat) - np.min(flat)) for flat in flat_images],
+        'skewness': [np.float64(stats.skew(flat)) for flat in flat_images],
+        'kurtosis': [np.float64(stats.kurtosis(flat)) for flat in flat_images],
+        'entropy': [np.float64(stats.entropy(np.histogram(flat, bins=256)[0])) for flat in flat_images]
     }
 
     # Reference image for comparison
@@ -104,41 +105,42 @@ def plot_comparison_with_histograms(
                 continue
 
             # Resize image to match reference if dimensions differ
-            resized = False
-            img_comp = img
+            resized: bool = False
+            img_comp: NDArray[np.float64] = img
 
             if img.shape != reference.shape:
                 resized = True
                 # Resize to match reference dimensions for comparison
-                img_comp = resize(img, reference.shape, anti_aliasing=True, preserve_range=True)
+                img_comp_resized = resize(img, reference.shape, anti_aliasing=True, preserve_range=True)
                 # Re-normalize after resize to ensure 0-1 range
-                img_comp = normalize(img_comp)
+                img_comp = normalize(img_comp_resized)
 
             # Mean Squared Error
-            mse = np.mean((reference - img_comp) ** 2)
+            mse: np.floating[Any] = np.mean((reference - img_comp) ** 2)
             stats_dict['mse'].append(mse)
 
             # Root Mean Squared Error
-            rmse = np.sqrt(mse)
+            rmse: np.floating[Any] = np.sqrt(mse)
             stats_dict['rmse'].append(rmse)
 
             # Peak Signal-to-Noise Ratio
+            psnr: np.floating[Any]
             if mse > 0:
                 psnr = 20 * np.log10(1.0 / np.sqrt(mse))
             else:
-                psnr = float('inf')
+                psnr = np.float64(float('inf'))
             stats_dict['psnr'].append(psnr)
 
             # Structural Similarity Index
             try:
-                ssim_value = ssim(reference, img_comp, data_range=1.0)
+                ssim_value: np.floating[Any] = ssim(reference, img_comp, data_range=1.0)
                 stats_dict['ssim'].append(ssim_value)
             except Exception as e:
                 stats_dict['ssim'].append(f'Error: {str(e)}')
 
             # Normalized Cross-Correlation
-            flat_comp = img_comp.flatten()
-            ncc = np.corrcoef(flat_reference, flat_comp)[0, 1]
+            flat_comp: NDArray[np.float64] = img_comp.flatten()
+            ncc: np.floating[Any] = np.corrcoef(flat_reference, flat_comp)[0, 1]
             stats_dict['ncc'].append(ncc)
 
             # Track whether image was resized
@@ -331,7 +333,7 @@ def plot_comparison_with_histograms(
     table_data = [["Metric"] + [titles[i] for i in selected_indices] + ["Notes"]]
 
     # Add individual image metrics
-    metrics = [
+    metrics: list[tuple[str, str, Any]] = [
         ("Dimensions", 'dimensions', lambda x: f"{x}"),
         ("Mean", 'mean', lambda x: f"{x:.4f}"),
         ("Std Dev", 'std_dev', lambda x: f"{x:.4f}"),
@@ -353,7 +355,7 @@ def plot_comparison_with_histograms(
 
     # Add comparison metrics (only if multiple images)
     if n_images > 1 and 'mse' in stats_dict:
-        comparison_metrics = [
+        comparison_metrics: list[tuple[str, str, Any]] = [
             ("MSE", 'mse', lambda x, r: f"{x:.6f}" + (" (resized)" if r else "")),
             ("PSNR", 'psnr', lambda x, r: f"{x:.2f} dB" + (" (resized)" if r else "")),
             ("SSIM", 'ssim', lambda x, r: f"{x}" if isinstance(x, str) else f"{x:.4f}" + (" (resized)" if r else "")),
@@ -367,7 +369,10 @@ def plot_comparison_with_histograms(
                     continue
                 #idx = selected_indices.index(i)
                 value = stats_dict[key][i]
-                resized = stats_dict['resized'][i]
+                resized_list = stats_dict['resized']
+                assert isinstance(resized_list, list)
+                resized = resized_list[i]
+                assert isinstance(resized, bool)
                 row.append(formatter(value, resized))
 
             # Fill remaining cells if needed

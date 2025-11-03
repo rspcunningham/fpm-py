@@ -7,6 +7,8 @@ import numpy as np
 Tensor device helpers
 """
 
+__all__ = ["best_device", "auto_place", "image_to_tensor"]
+
 def best_device() -> torch.device:
     if torch.cuda.is_available():
         return torch.device("cuda")
@@ -30,7 +32,7 @@ def image_to_tensor(
 ) -> torch.Tensor:
     """
     Load an image file and convert it to a torch.Tensor.
-    
+
     Parameters
     ----------
     image_path : str
@@ -39,36 +41,36 @@ def image_to_tensor(
         If True, converts the image to a complex tensor with zero imaginary part.
         Default is False.
     device : torch.device or str, optional
-        Device to place the tensor on. If None, uses CUDA if available, 
+        Device to place the tensor on. If None, uses CUDA if available,
         then MPS (Apple Silicon), then CPU.
     normalize : bool, optional
         If True, normalizes pixel values to range [0, 1]. Default is True.
-        
+
     Returns
     -------
     torch.Tensor
         The image as a torch.Tensor.
     """
-    
-    
+
+
     # Determine device if not specified
     if device is None:
         device = best_device()
-    
+
     # Load image and convert to grayscale
     img = Image.open(image_path).convert("L")
-    
+
     # Convert to numpy array and then to tensor
     img_np = np.array(img, copy=True)
-    
+
     # Normalize if required
     if normalize:
         img_tensor = torch.from_numpy(img_np).float().to(device) / 255.0
     else:
         img_tensor = torch.from_numpy(img_np).float().to(device)
-    
+
     # Convert to complex tensor if requested
     if to_complex:
         img_tensor = img_tensor.to(torch.complex64)  # Zero imaginary part
-    
+
     return img_tensor

@@ -49,17 +49,17 @@ def kvector_to_x_y(
     obj_size: tuple[int, int] | None = None,
 ) -> tuple[int, int]:
     """Map a *k-vector* to integer crop coordinates inside the global spectrum.
-    
+
     Args:
         fourier_center: Center coordinates (row, col) of the global spectrum
         image_size: Size of the sub-image to be placed [H, W]
         du: conversion factor from k-space to pixel units
         k_vector: Physical k-vector for this sub-image
         obj_size: Optional size of target object for bounds validation [H, W]
-        
+
     Returns:
         (x, y): Top-left coordinates for placing the sub-image in global space
-        
+
     Raises:
         AssertionError: If the calculated coordinates would index outside
                         the target object bounds (when obj_size is provided)
@@ -71,7 +71,7 @@ def kvector_to_x_y(
 
     x = int(fourier_center[0] + shift[0].item() - image_center[0].item())
     y = int(fourier_center[1] + shift[1].item() - image_center[1].item())
-    
+
     # Validate indices if obj_size is provided
     if obj_size is not None:
         # Check x bounds
@@ -84,7 +84,7 @@ def kvector_to_x_y(
             f"y index {y} out of bounds [0, {obj_size[1] - image_size[1].item()}]. "
             f"Consider increasing output size to accommodate k-vector {k_vector}."
         )
-    
+
     return x, y
 
 
@@ -96,34 +96,39 @@ def kvector_to_x_y(
 def overlap_matrices(
     larger: torch.Tensor,
     smaller: torch.Tensor,
-    bottom: int,
-    left: int,
+    row: int,
+    col: int,
 ) -> torch.Tensor:
-    """Add *smaller* into *larger* in-place at (bottom, left).
+    """Add *smaller* into *larger* in-place at top-left position (row, col).
 
-    The *bottom*/*left* indices follow the original MATLAB-style convention
-    used in the historical code: *(bottom, left)* refers to the bottom-right
-    corner of the crop.  The function converts this to a top-left corner and
-    performs an in-place +=.
+    Args:
+        larger: Target tensor to update in-place
+        smaller: Source tensor to add into larger
+        row: Top-left row coordinate for placement
+        col: Top-left column coordinate for placement
+
+    Returns:
+        The modified larger tensor (same object, modified in-place)
+
+    Raises:
+        ValueError: If the placement would exceed the bounds of the larger tensor
     """
 
     rows, cols = smaller.shape[-2:]
-    start_row = bottom - rows + 1
-    start_col = left
 
     if (
-        start_row < 0
-        or start_col < 0
-        or start_row + rows > larger.shape[-2]
-        or start_col + cols > larger.shape[-1]
+        row < 0
+        or col < 0
+        or row + rows > larger.shape[-2]
+        or col + cols > larger.shape[-1]
     ):
         raise ValueError(f"Smaller matrix cannot be placed at the specified position. "
-                         f"start_row: {start_row}, start_col: {start_col}, "
+                         f"row: {row}, col: {col}, "
                          f"rows: {rows}, cols: {cols}, "
                          f"larger shape: {larger.shape}, "
                          f"smaller shape: {smaller.shape}")
 
-    larger[start_row : start_row + rows, start_col : start_col + cols].add_(smaller)
+    larger[row : row + rows, col : col + cols].add_(smaller)
     return larger
 
 

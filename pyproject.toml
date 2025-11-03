@@ -24,6 +24,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Image Processing",
 ]
 dependencies = [
+    "loguru>=0.7.0",
     "matplotlib>=3.9.4",
     "scikit-image>=0.24.0",
     "scipy>=1.13.1",
@@ -38,5 +39,9 @@ Issues = "https://github.com/rspcunningham/fpm-py/issues"
 
 [tool.pyright]
 reportMissingTypeStubs = false
-reportUnknownReturnType = "error"
 reportUnknownParameterType = "error"
+
+[dependency-groups]
+dev = [
+    "basedpyright>=1.32.1",
+]
