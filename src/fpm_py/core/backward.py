@@ -1,7 +1,6 @@
 from __future__ import annotations
 import math
 import torch
-from loguru import logger
 
 from ..utils.math_utils import ft, ift  # Only import what we need
 from .structs import ImageCapture, ImageSeries, AcquisitionSettings  # `AcquisitionSettings` holds .du
@@ -98,7 +97,7 @@ def kvectors_to_image_series(
     # Using min(H, W) as the relevant dimension to ensure properly scaled results
     # note that du in this context is the scale between k-space in pixels and in radians, NOT the sampling interval in k-space
     du = wavelength / (min(H, W) * effective_pixel_size)
-    logger.info(f"Calculated du = {du:.6f} from optical parameters")
+    print(f"Calculated du = {du:.6f} from optical parameters")
 
     # Create coordinate grids
     y_grid, x_grid = torch.meshgrid(
@@ -113,17 +112,17 @@ def kvectors_to_image_series(
             # Default to a reasonable pupil size if not specified
             pupil_radius = min(H, W) // 10
 
-        logger.info(f"Using pupil with radius {pupil_radius} pixels")
+        print(f"Using pupil with radius {pupil_radius} pixels")
         r_squared = x_grid**2 + y_grid**2
         pupil_mask = (r_squared <= pupil_radius**2).to(torch.complex64)
     else:
         pupil_mask = pupil.to(device).to(torch.complex64)
-        logger.info("Using custom pupil function")
+        print("Using custom pupil function")
 
     # Log k-vector information
     k_min = k_vectors.min(dim=0)[0]
     k_max = k_vectors.max(dim=0)[0]
-    logger.info(f"K-vectors range: ({k_min[0].item():.2f}, {k_min[1].item():.2f}) to ({k_max[0].item():.2f}, {k_max[1].item():.2f})")
+    print(f"K-vectors range: ({k_min[0].item():.2f}, {k_min[1].item():.2f}) to ({k_max[0].item():.2f}, {k_max[1].item():.2f})")
 
     # Create list to store captures
     captures: list[ImageCapture] = []

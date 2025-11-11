@@ -2,9 +2,37 @@ from fpm_py import reconstruct, kvectors_to_image_series, image_to_tensor
 from fpm_py.analysis import plot_comparison_with_histograms
 import matplotlib.pyplot as plt
 import torch
-from loguru import logger
 
 from fpm_py.core.backward import xyz_to_kxky
+
+
+def generate_grid_points(x_spacing: float, y_spacing: float, x_n: int, y_n: int, z: float) -> list[tuple[float, float, float]]:
+    """
+    Generate a grid of (x, y, z) points centered at origin.
+
+    Args:
+        x_spacing: Spacing between points in x direction (meters)
+        y_spacing: Spacing between points in y direction (meters)
+        x_n: Number of points in x direction
+        y_n: Number of points in y direction
+        z: Fixed z coordinate for all points (meters)
+
+    Returns:
+        List of (x, y, z) tuples representing grid points
+    """
+    points = []
+
+    # Calculate centered offsets
+    x_start = -(x_n - 1) / 2
+    y_start = -(y_n - 1) / 2
+
+    for i in range(x_n):
+        for j in range(y_n):
+            x = (x_start + i) * x_spacing
+            y = (y_start + j) * y_spacing
+            points.append((x, y, z))
+
+    return points
 
 
 # Step 1: Load the target image
@@ -23,22 +51,13 @@ z = 100e-3  # 100 mm
 x_spacing = 10e-3 # 10 mm
 y_spacing = 10e-3 # 10 mm
 
-points = [
-    (-2*x_spacing, -2*y_spacing, z),
-    (-2*x_spacing, 0, z),
-    (-2*x_spacing, 2*y_spacing, z),
-    (0, -2*y_spacing, z),
-    (0, 0, z),
-    (0, 2*y_spacing, z),
-    (2*x_spacing, -2*y_spacing, z),
-    (2*x_spacing, 0, z),
-    (2*x_spacing, 2*y_spacing, z)
-]
+# Generate 3x3 grid of points
+points = generate_grid_points(x_spacing, y_spacing, x_n=10, y_n=10, z=z)
 
 k_vectors = torch.stack([xyz_to_kxky(point, wavelength, pixel_size, 9.48e-3, 9.48e-3) for point in points])
 
-logger.info(f"Generated {len(k_vectors)} k-vectors")
-logger.info(f"K vectors: {k_vectors}")
+print(f"Generated {len(k_vectors)} k-vectors")
+print(f"K vectors: {k_vectors}")
 
 # Step 3: Backwards pass (target + k-vectors --> captures)
 
@@ -51,13 +70,13 @@ dataset = kvectors_to_image_series(
     magnification=magnification
 )
 
-logger.info(f"Dataset generated with {len(dataset.captures)} captures using direct k-vectors.")
+print(f"Dataset generated with {len(dataset.captures)} captures using direct k-vectors.")
 
 # Step 4: Forward pass (captures + k-vectors --> reconstruction)
 
 target = full_image.abs().cpu().numpy()
-output1 = reconstruct(dataset, output_scale_factor=10, max_iters=1).abs().cpu().numpy()
-output2 = reconstruct(dataset, output_scale_factor=10, max_iters=10).abs().cpu().numpy()
+output1 = reconstruct(dataset, output_scale_factor=20, max_iters=1).abs().cpu().numpy()
+output2 = reconstruct(dataset, output_scale_factor=20, max_iters=10).abs().cpu().numpy()
 
 # Step 5: Assess the outputs
 

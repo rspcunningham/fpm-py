@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Optional, Tuple
 import time
 import torch
-from loguru import logger
 
 from ..utils.math_utils import overlap_matrices, circle_like, ft, ift, kvector_to_x_y
 from .structs import ImageSeries, ImageCapture
@@ -218,6 +217,6 @@ def reconstruct(
         result = ift(obj_est)
 
         elapsed_time = time.perf_counter() - start_time
-        logger.info(f"Reconstruction completed in {elapsed_time:.2f}s ({max_iters} iterations, {len(series.captures)} captures)")
+        print(f"Reconstruction completed in {elapsed_time:.2f}s ({max_iters} iterations, {len(series.captures)} captures)")
 
         return result
