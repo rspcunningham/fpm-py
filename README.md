@@ -57,7 +57,7 @@ plt.imshow(reconstruction.abs().cpu().numpy(), cmap='gray')
 plt.show()
 ```
 
-For a more detailed walkthrough, see [main.py](https://github.com/rspcunningham/fpm-py/blob/main/main.py).
+For a more detailed walkthrough, see [example.py](https://github.com/rspcunningham/fpm-py/blob/main/example.py).
 
 ## Core Concepts
 
@@ -297,7 +297,7 @@ For the mathematical foundations of Fourier ptychography, see: https://en.wikipe
 
 ## Example: Full Pipeline
 
-See [`main.py`](main.py) for a complete working example that:
+See [`example.py`](example.py) for a complete working example that:
 1. Loads a test image (USAF resolution target)
 2. Generates a 5×5 grid of k-vectors
 3. Simulates FPM captures

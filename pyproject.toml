@@ -12,17 +12,6 @@ license = "MIT"
 authors = [
     {name = "Robin Cunningham", email = "rspcunningham@gmail.com"},
 ]
-keywords = ["fourier", "ptychography", "microscopy", "imaging", "reconstruction"]
-classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Science/Research",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Topic :: Scientific/Engineering :: Image Processing",
-]
 dependencies = [
     "matplotlib>=3.9.4",
     "scikit-image>=0.24.0",
@@ -36,7 +25,5 @@ Homepage = "https://github.com/rspcunningham/fpm-py"
 Repository = "https://github.com/rspcunningham/fpm-py"
 Issues = "https://github.com/rspcunningham/fpm-py/issues"
 
-[tool.pyright]
+[tool.basedpyright]
 reportMissingTypeStubs = false
-reportUnknownReturnType = "error"
-reportUnknownParameterType = "error"
