@@ -1,29 +1,15 @@
-[build-system]
-requires = ["setuptools>=67", "wheel"]
-build-backend = "setuptools.build_meta"
-
 [project]
-name = "fpm-py"
-version = "2.0.0"
-description = "Fourier ptychography tooling for simulation and reconstruction"
+name = "ptych"
+version = "0.0.1"
+description = ""
 readme = "README.md"
-requires-python = ">=3.9,<3.13"
+requires-python = ">=3.13,<3.14"
 license = "MIT"
 authors = [
     {name = "Robin Cunningham", email = "rspcunningham@gmail.com"},
+    {name = "Sammy Farnum", email = "sfarnumm1132@gmail.com"}
 ]
-dependencies = [
-    "matplotlib>=3.9.4",
-    "scikit-image>=0.24.0",
-    "scipy>=1.13.1",
-    "seaborn>=0.13.2",
-    "torch>=2.8.0",
-]
-
-[project.urls]
-Homepage = "https://github.com/rspcunningham/fpm-py"
-Repository = "https://github.com/rspcunningham/fpm-py"
-Issues = "https://github.com/rspcunningham/fpm-py/issues"
+dependencies = []
 
 [tool.basedpyright]
 reportMissingTypeStubs = false
