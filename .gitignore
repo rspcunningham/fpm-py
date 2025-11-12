@@ -12,3 +12,4 @@ build/
 *.pyo
 
 tmp/
+.DS_Store
