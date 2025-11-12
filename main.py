@@ -1,4 +1,3 @@
-from matplotlib.typing import CapStyleType
 from ptych import forward_model
 from ptych.analysis import plot_comparison
 from ptych.train import training_loop
