@@ -1,3 +1,4 @@
+from matplotlib.typing import CapStyleType
 from ptych import forward_model
 from ptych.analysis import plot_comparison
 from ptych.train import training_loop
@@ -37,11 +38,11 @@ print(f"total k_vectors: {len(k_vectors)}")
 # Generate captures using batched forward model
 kx_all = torch.tensor([k[0] for k in k_vectors])
 ky_all = torch.tensor([k[1] for k in k_vectors])
-captures_batched = forward_model(image_complex, pupil, kx_all, ky_all)  # [B, H, W]
+captures_batched = forward_model(image_complex, pupil, kx_all, ky_all, downsample_factor=2)  # [B, H, W]
 captures = [captures_batched[i] for i in range(len(k_vectors))]
 
 # 'training loop' but really its just 'solve the inverse problem'
-pred_O, _, losses = training_loop(captures, k_vectors, 512)
+pred_O, _, losses = training_loop(captures, k_vectors, 1024)
 pred_amplitude = torch.abs(pred_O)
 
 # Plot loss curve
@@ -53,6 +54,10 @@ plt.title('Training Loss')
 plt.grid(True)
 plt.tight_layout()
 plt.show()
+
+print("original: ", amplitude.shape)
+print("capture: ", captures[0].shape)
+print("predicted: ", pred_amplitude.shape)
 
 # Plot comparison
 plot_comparison([amplitude.cpu(), captures[60].cpu(), pred_amplitude.cpu()], ['Original', 'Center Illumination', 'Predicted'])

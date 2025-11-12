@@ -7,9 +7,14 @@ def training_loop(captures: list[torch.Tensor], k_vectors: list[tuple[int, int]]
     n_captures = len(captures)
     assert n_captures == len(k_vectors), "Captures and k-vectors must match"
 
+    print("Training loop started")
+    print("Capture size:", captures[0].shape[0])
+    print("Output size:", output_size)
+
     # Initiate the learnable parameters
     O = (0.5 * torch.ones(output_size, output_size, dtype=torch.complex64)).requires_grad_(True)
     P = (0.5 * torch.ones(output_size, output_size, dtype=torch.complex64)).requires_grad_(True)
+    downsample_factor = output_size // captures[0].shape[0]
 
     # Initialize the optimizer
     optimizer = torch.optim.AdamW([O, P], lr=0.1)
@@ -22,9 +27,9 @@ def training_loop(captures: list[torch.Tensor], k_vectors: list[tuple[int, int]]
 
     # Training loop
     losses_per_epoch: list[float] = []
-    for _ in tqdm(range(50), desc="Training"):
+    for _ in tqdm(range(50), desc="Solving"):
         # Batched forward pass
-        predicted_intensities = forward_model(O, P, kx_batch, ky_batch)  # [B, H, W]
+        predicted_intensities = forward_model(O, P, kx_batch, ky_batch, downsample_factor)  # [B, H, W]
 
         # Compute loss across all captures
         total_loss = torch.nn.functional.mse_loss(predicted_intensities, captures_batch)
