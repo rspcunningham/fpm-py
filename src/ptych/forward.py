@@ -45,6 +45,7 @@ def forward_model(
     phase = 2 * torch.pi * (kx_normalized * x_grid[None, :, :] + ky_normalized * y_grid[None, :, :])
     phase_ramps = torch.exp(1j * phase.to(dtype))  # [B, H, W]
 
+
     # Apply phase ramps to object (multiply in spatial domain = shift in frequency domain)
     tilted_objects = object_tensor[None, :, :] * phase_ramps  # [B, H, W]
 

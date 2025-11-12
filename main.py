@@ -6,12 +6,15 @@ from torchvision.io import read_image, ImageReadMode
 from itertools import product
 import matplotlib.pyplot as plt
 
-torch.set_default_device('mps')
+DEVICE = torch.device('mps')
+torch.set_default_device(DEVICE)
 
 # load the sample image and set phase = torch.pi * amplitude
 amplitude = read_image('data/bars.png', mode=ImageReadMode.GRAY).squeeze(0).float() / 255.0
 phase = torch.pi * amplitude
-image_complex = amplitude * torch.exp(1j * phase)
+image_complex = (amplitude * torch.exp(1j * phase)).to(DEVICE)
+
+print(f"amplitude: {amplitude.device}")
 
 height, width = image_complex.shape
 print(f"Image shape: {height}x{width}")
