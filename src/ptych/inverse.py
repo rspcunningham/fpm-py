@@ -42,13 +42,14 @@ def solve_inverse(captures: list[torch.Tensor], k_vectors: list[tuple[int, int]]
     # Telemetry
     metrics: dict[str, list[float]] = {
         'loss': [],
-        'lr': [],
-        'object_max': [],
-        'pupil_max': []
+        'lr': []
     }
 
     # Training loop
     for _ in tqdm(range(epochs), desc="Solving"):
+        # need to do this again so that gradients flow through the optimizer correctly.
+        O_full = O_real + 1j * O_imag
+        P_full = P_real + 1j * P_imag
         # Batched forward pass
         predicted_intensities = forward_model(O_full, P_full, kx_batch, ky_batch, downsample_factor)  # [B, H, W]
 
@@ -64,7 +65,5 @@ def solve_inverse(captures: list[torch.Tensor], k_vectors: list[tuple[int, int]]
         # Record loss for this epoch
         metrics['loss'].append(total_loss.item())
         metrics['lr'].append(scheduler.get_last_lr()[0])
-        metrics['object_max'].append(O_full.abs().max().item())
-        metrics['pupil_max'].append(P_full.abs().max().item())
 
     return O_full.detach(), P_full.detach(), metrics
