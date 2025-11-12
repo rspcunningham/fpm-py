@@ -1,21 +1,22 @@
 from ptych import forward_model
 from ptych.analysis import plot_comparison
 from ptych.train import training_loop
-
-from itertools import product
 import torch
-import numpy as np
-from PIL import Image
+from torchvision.io import read_image, ImageReadMode
+from itertools import product
 import matplotlib.pyplot as plt
 
-amplitude = torch.from_numpy(np.array(Image.open('data/bars.png').convert('L'))) / 255.0
+torch.set_default_device('mps')
+
+amplitude = read_image('data/bars.png', mode=ImageReadMode.GRAY).squeeze(0).float() / 255.0
 phase = torch.pi * amplitude
 image_complex = amplitude * torch.exp(1j * phase)
 
 height, width = image_complex.shape
 print(f"Image shape: {height}x{width}")
 
-O = image_complex
+# need to cast to mps because it was created from numpy which ignore default device setting
+O = image_complex.to('mps')
 
 # Create circular pupil
 radius = 50
@@ -31,7 +32,11 @@ P = (distance <= radius).float()
 k_vectors: list[tuple[int, int]] = [(k[0], k[1]) for k in product(range(-50, 51, 10), repeat=2)]
 print(f"total k_vectors: {len(k_vectors)}")
 
-captures = [forward_model(O, P, k[0], k[1]) for k in k_vectors]
+# Generate captures using batched forward model
+kx_all = torch.tensor([k[0] for k in k_vectors])
+ky_all = torch.tensor([k[1] for k in k_vectors])
+captures_batched = forward_model(O, P, kx_all, ky_all)  # [B, H, W]
+captures = [captures_batched[i] for i in range(len(k_vectors))]
 
 pred_O, _, losses = training_loop(captures, k_vectors, 512)
 pred_amplitude = torch.abs(pred_O)
@@ -47,4 +52,4 @@ plt.tight_layout()
 plt.show()
 
 # Plot comparison
-plot_comparison([amplitude, captures[60], pred_amplitude], ['Original', 'Center Illumination', 'Predicted'])
+plot_comparison([amplitude.cpu(), captures[60].cpu(), pred_amplitude.cpu()], ['Original', 'Center Illumination', 'Predicted'])

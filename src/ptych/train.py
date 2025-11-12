@@ -13,35 +13,34 @@ def training_loop(captures: list[torch.Tensor], k_vectors: list[tuple[int, int]]
     n_captures = len(captures)
     assert n_captures == len(k_vectors), "Captures and k-vectors must match"
 
+    # Prepare batched k-vectors and captures
+    kx_batch = torch.tensor([k[0] for k in k_vectors])
+    ky_batch = torch.tensor([k[1] for k in k_vectors])
+    captures_batch = torch.stack(captures)  # [B, H, W]
+
     # Training loop
     losses_per_epoch: list[float] = []
     for epoch in range(50):
         print(f"Starting epoch {epoch}")
-        # Forward pass
-        losses: list[torch.Tensor] = []
-        for i in range(n_captures):
-            target_intensity = captures[i]
-            k_vector = k_vectors[i]
 
-            predicted_intensity = forward_model(O, P, k_vector[0], k_vector[1])
+        # Batched forward pass - all captures at once!
+        predicted_intensities = forward_model(O, P, kx_batch, ky_batch)  # [B, H, W]
 
-            # Debug logging for first capture of first epoch
-            if epoch == 0 and i == 0:
-                print(f"  Capture range: [{target_intensity.min():.3f}, {target_intensity.max():.3f}]")
-                print(f"  Predicted range: [{predicted_intensity.min():.3f}, {predicted_intensity.max():.3f}]")
+        # Debug logging for first epoch
+        if epoch == 0:
+            print(f"  Capture range: [{captures_batch.min():.3f}, {captures_batch.max():.3f}]")
+            print(f"  Predicted range: [{predicted_intensities.min():.3f}, {predicted_intensities.max():.3f}]")
 
-            # Compute loss
-            loss = torch.nn.functional.mse_loss(predicted_intensity, target_intensity)
-            losses.append(loss)
+        # Compute loss across all captures
+        total_loss = torch.nn.functional.mse_loss(predicted_intensities, captures_batch)
 
         # Backward pass
         optimizer.zero_grad()
-        total_loss = torch.stack(losses).sum()
         total_loss.backward()
 
         # Check gradients
         if O.grad is not None and P.grad is not None:
-            print(f"  O grad norm: {O.grad.norm().item():.6f}, P grad norm: {P.grad.norm().item():.6f}")
+            print(f"  O grad norm: {torch.abs(O.grad).norm().item():.6f}, P grad norm: {torch.abs(P.grad).norm().item():.6f}")
         else:
             print("  WARNING: Gradients are None!")
 
