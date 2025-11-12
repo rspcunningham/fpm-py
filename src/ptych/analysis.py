@@ -20,3 +20,23 @@ def plot_comparison(images: list[torch.Tensor], labels: list[str], save_path: st
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
 
     _ = plt.show()
+
+def plot_curves(metric_dict: dict[str, list[float]], save_path: str | None = None):
+    assert len(metric_dict) > 0, "No metrics provided"
+
+    _ = plt.figure(figsize=(10, 6))
+
+    for key, values in metric_dict.items():
+        _ = plt.plot(values, label=key)
+
+    _ = plt.xlabel('Epoch')
+    _ = plt.ylabel('Value')
+    _ = plt.legend()
+    _ = plt.grid(True, alpha=0.3)
+
+    _ = plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+
+    _ = plt.show()
