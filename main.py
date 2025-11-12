@@ -54,9 +54,9 @@ plt.grid(True)
 plt.tight_layout()
 plt.show()
 
-print("original: ", amplitude.shape)
-print("capture: ", captures[0].shape)
-print("predicted: ", pred_amplitude.shape)
+print(f"original: {amplitude.shape} | {amplitude.min().item()}, {amplitude.max().item()}")
+print(f"capture: {captures[0].shape} | {captures[0].min().item()}, {captures[0].max().item()}")
+print(f"predicted: {pred_amplitude.shape} | {pred_amplitude.min().item()}, {pred_amplitude.max().item()}")
 
 # Plot comparison
 plot_comparison([amplitude.cpu(), captures[60].cpu(), pred_amplitude.cpu()], ['Original', 'Center Illumination', 'Predicted'])

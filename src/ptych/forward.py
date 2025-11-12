@@ -2,13 +2,20 @@
 The FP forward model: O, P, {k_i}  →  {I_i}
 """
 from typing import Callable, cast
+from functools import partial
 import torch
 import torch.nn.functional as F
 
-fft2 = cast(Callable[..., torch.Tensor], torch.fft.fft2)
-fftshift = cast(Callable[..., torch.Tensor], torch.fft.fftshift)
-ifft2 = cast(Callable[..., torch.Tensor], torch.fft.ifft2)
-ifftshift = cast(Callable[..., torch.Tensor], torch.fft.ifftshift)
+# Use unitary Fourier transforms
+_fft2_ortho  = partial(torch.fft.fft2,  norm="ortho")
+_ifft2_ortho = partial(torch.fft.ifft2, norm="ortho")
+_fftshift    = torch.fft.fftshift
+_ifftshift   = torch.fft.ifftshift
+
+fft2 = cast(Callable[..., torch.Tensor], _fft2_ortho)
+ifft2 = cast(Callable[..., torch.Tensor], _ifft2_ortho)
+fftshift = cast(Callable[..., torch.Tensor], _fftshift)
+ifftshift = cast(Callable[..., torch.Tensor], _ifftshift)
 
 def forward_model(
     object_tensor: torch.Tensor,
