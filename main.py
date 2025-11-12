@@ -42,7 +42,7 @@ captures = [captures_batched[i] for i in range(len(k_vectors))]
 
 # 'training loop' but really its just 'solve the inverse problem'
 pred_O, _, losses = training_loop(captures, k_vectors, 1024)
-pred_amplitude = torch.abs(pred_O)
+pred_amplitude = torch.abs(pred_O) / torch.max(torch.abs(pred_O))
 
 # Plot loss curve
 plt.figure(figsize=(10, 4))

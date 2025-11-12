@@ -32,7 +32,8 @@ def training_loop(captures: list[torch.Tensor], k_vectors: list[tuple[int, int]]
         predicted_intensities = forward_model(O, P, kx_batch, ky_batch, downsample_factor)  # [B, H, W]
 
         # Compute loss across all captures
-        total_loss = torch.nn.functional.mse_loss(predicted_intensities, captures_batch)
+        #total_loss = torch.nn.functional.mse_loss(predicted_intensities, captures_batch)
+        total_loss = torch.nn.functional.l1_loss(predicted_intensities, captures_batch)
 
         # Backward pass
         optimizer.zero_grad()
