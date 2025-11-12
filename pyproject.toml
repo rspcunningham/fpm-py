@@ -19,6 +19,7 @@ dependencies = [
     "seaborn>=0.13.2",
     "torch>=2.9.0",
     "torchvision>=0.24.0",
+    "tqdm>=4.67.1",
 ]
 
 [tool.hatch.build.targets.wheel]
