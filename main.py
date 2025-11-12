@@ -41,14 +41,15 @@ captures_batched = forward_model(image_complex, pupil, kx_all, ky_all, downsampl
 captures = [captures_batched[i] for i in range(len(k_vectors))]
 
 # 'training loop' but really its just 'solve the inverse problem'
-pred_O, _, losses = training_loop(captures, k_vectors, 1024)
+pred_O, _, metrics = training_loop(captures, k_vectors, 1024)
 pred_amplitude = torch.abs(pred_O) / torch.max(torch.abs(pred_O))
 
 # Plot loss curve
 plt.figure(figsize=(10, 4))
-plt.plot(losses)
+plt.plot(metrics['losses_per_epoch'])
+plt.plot(metrics['lr_per_epoch'])
 plt.xlabel('Epoch')
-plt.ylabel('Loss')
+plt.ylabel('Value')
 plt.title('Training Loss')
 plt.grid(True)
 plt.tight_layout()
@@ -59,4 +60,4 @@ print(f"capture: {captures[0].shape} | {captures[0].min().item()}, {captures[0].
 print(f"predicted: {pred_amplitude.shape} | {pred_amplitude.min().item()}, {pred_amplitude.max().item()}")
 
 # Plot comparison
-plot_comparison([amplitude.cpu(), captures[60].cpu(), pred_amplitude.cpu()], ['Original', 'Center Illumination', 'Predicted'], 'tmp/l1_loss.png')
+plot_comparison([amplitude.cpu(), captures[60].cpu(), pred_amplitude.cpu()], ['Original', 'Center Illumination', 'Predicted'], 'tmp/l1_loss_100_csa.png')
