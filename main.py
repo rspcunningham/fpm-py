@@ -1,69 +1,58 @@
-from fpm_py import reconstruct, kvectors_to_image_series, image_to_tensor
-from fpm_py.analysis import plot_comparison_with_histograms
-import matplotlib.pyplot as plt
+from ptych import forward_model
+from ptych.analysis import plot_comparison
+from ptych.train import training_loop
 import torch
-from loguru import logger
+from torchvision.io import read_image, ImageReadMode
+from itertools import product
+import matplotlib.pyplot as plt
 
-from fpm_py.core.backward import xyz_to_kxky
+DEVICE = torch.device('mps')
+torch.set_default_device(DEVICE)
 
+# load the sample image and set phase = torch.pi * amplitude
+amplitude = read_image('data/bars.png', mode=ImageReadMode.GRAY).squeeze(0).float() / 255.0
+phase = torch.pi * amplitude
+image_complex = (amplitude * torch.exp(1j * phase)).to(DEVICE)
 
-# Step 1: Load the target image
+print(f"amplitude: {amplitude.device}")
 
-full_image = image_to_tensor("data/bars.png", to_complex=True)
+height, width = image_complex.shape
+print(f"Image shape: {height}x{width}")
 
-# Step 2: Define the k-space
-
-# Define optical parameters
-wavelength = 550e-9  # 550 nm (green light)
-pixel_size = 1e-6    # 1 µm
-pupil_radius = 100    # pixels
-magnification = 1.0  # 10x
-
-z = 100e-3  # 100 mm
-x_spacing = 10e-3 # 10 mm
-y_spacing = 10e-3 # 10 mm
-
-points = [
-    (-2*x_spacing, -2*y_spacing, z),
-    (-2*x_spacing, 0, z),
-    (-2*x_spacing, 2*y_spacing, z),
-    (0, -2*y_spacing, z),
-    (0, 0, z),
-    (0, 2*y_spacing, z),
-    (2*x_spacing, -2*y_spacing, z),
-    (2*x_spacing, 0, z),
-    (2*x_spacing, 2*y_spacing, z)
-]
-
-k_vectors = torch.stack([xyz_to_kxky(point, wavelength, pixel_size, 9.48e-3, 9.48e-3) for point in points])
-
-logger.info(f"Generated {len(k_vectors)} k-vectors")
-logger.info(f"K vectors: {k_vectors}")
-
-# Step 3: Backwards pass (target + k-vectors --> captures)
-
-dataset = kvectors_to_image_series(
-    obj=full_image,
-    k_vectors=k_vectors,
-    pupil_radius=pupil_radius,
-    wavelength=wavelength,
-    pixel_size=pixel_size,
-    magnification=magnification
+# Create circular pupil
+radius = 50
+y_coords, x_coords = torch.meshgrid(
+    torch.arange(height, dtype=torch.float32),
+    torch.arange(width, dtype=torch.float32),
+    indexing='ij'
 )
+center_y, center_x = height / 2, width / 2
+distance = torch.sqrt((x_coords - center_x)**2 + (y_coords - center_y)**2)
+pupil = (distance <= radius).float()
 
-logger.info(f"Dataset generated with {len(dataset.captures)} captures using direct k-vectors.")
+# create grid of k-vectors
+k_vectors: list[tuple[int, int]] = [(k[0], k[1]) for k in product(range(-50, 51, 10), repeat=2)]
+print(f"total k_vectors: {len(k_vectors)}")
 
-# Step 4: Forward pass (captures + k-vectors --> reconstruction)
+# Generate captures using batched forward model
+kx_all = torch.tensor([k[0] for k in k_vectors])
+ky_all = torch.tensor([k[1] for k in k_vectors])
+captures_batched = forward_model(image_complex, pupil, kx_all, ky_all)  # [B, H, W]
+captures = [captures_batched[i] for i in range(len(k_vectors))]
 
-target = full_image.abs().cpu().numpy()
-output1 = reconstruct(dataset, output_scale_factor=10, max_iters=1).abs().cpu().numpy()
-output2 = reconstruct(dataset, output_scale_factor=10, max_iters=10).abs().cpu().numpy()
+# 'training loop' but really its just 'solve the inverse problem'
+pred_O, _, losses = training_loop(captures, k_vectors, 512)
+pred_amplitude = torch.abs(pred_O)
 
-# Step 5: Assess the outputs
-
-fig, stats = plot_comparison_with_histograms(
-    images=[target, output1, output2],
-    titles=["Target", "1 Iteration", "10 Iterations"],
-    reference_idx=0  # Use first image as reference
-)
+# Plot loss curve
+plt.figure(figsize=(10, 4))
+plt.plot(losses)
+plt.xlabel('Epoch')
+plt.ylabel('Loss')
+plt.title('Training Loss')
+plt.grid(True)
+plt.tight_layout()
 plt.show()
+
+# Plot comparison
+plot_comparison([amplitude.cpu(), captures[60].cpu(), pred_amplitude.cpu()], ['Original', 'Center Illumination', 'Predicted'])

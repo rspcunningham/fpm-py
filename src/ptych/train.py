@@ -1,0 +1,40 @@
+from ptych.forward import forward_model
+import torch
+from tqdm import tqdm
+
+def training_loop(captures: list[torch.Tensor], k_vectors: list[tuple[int, int]], output_size: int) -> tuple[torch.Tensor, torch.Tensor, list[float]]:
+
+    n_captures = len(captures)
+    assert n_captures == len(k_vectors), "Captures and k-vectors must match"
+
+    # Initiate the learnable parameters
+    O = (0.5 * torch.ones(output_size, output_size, dtype=torch.complex64)).requires_grad_(True)
+    P = (0.5 * torch.ones(output_size, output_size, dtype=torch.complex64)).requires_grad_(True)
+
+    # Initialize the optimizer
+    optimizer = torch.optim.AdamW([O, P], lr=0.1)
+
+
+    # Prepare batched k-vectors and captures
+    kx_batch = torch.tensor([k[0] for k in k_vectors])
+    ky_batch = torch.tensor([k[1] for k in k_vectors])
+    captures_batch = torch.stack(captures)  # [B, H, W]
+
+    # Training loop
+    losses_per_epoch: list[float] = []
+    for _ in tqdm(range(50), desc="Training"):
+        # Batched forward pass
+        predicted_intensities = forward_model(O, P, kx_batch, ky_batch)  # [B, H, W]
+
+        # Compute loss across all captures
+        total_loss = torch.nn.functional.mse_loss(predicted_intensities, captures_batch)
+
+        # Backward pass
+        optimizer.zero_grad()
+        total_loss.backward()
+        optimizer.step()
+
+        # Record loss for this epoch
+        losses_per_epoch.append(total_loss.item())
+
+    return O.detach(), P.detach(), losses_per_epoch
