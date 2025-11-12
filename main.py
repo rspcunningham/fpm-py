@@ -8,15 +8,13 @@ import matplotlib.pyplot as plt
 
 torch.set_default_device('mps')
 
+# load the sample image and set phase = torch.pi * amplitude
 amplitude = read_image('data/bars.png', mode=ImageReadMode.GRAY).squeeze(0).float() / 255.0
 phase = torch.pi * amplitude
 image_complex = amplitude * torch.exp(1j * phase)
 
 height, width = image_complex.shape
 print(f"Image shape: {height}x{width}")
-
-# need to cast to mps because it was created from numpy which ignore default device setting
-O = image_complex.to('mps')
 
 # Create circular pupil
 radius = 50
@@ -27,17 +25,19 @@ y_coords, x_coords = torch.meshgrid(
 )
 center_y, center_x = height / 2, width / 2
 distance = torch.sqrt((x_coords - center_x)**2 + (y_coords - center_y)**2)
-P = (distance <= radius).float()
+pupil = (distance <= radius).float()
 
+# create grid of k-vectors
 k_vectors: list[tuple[int, int]] = [(k[0], k[1]) for k in product(range(-50, 51, 10), repeat=2)]
 print(f"total k_vectors: {len(k_vectors)}")
 
 # Generate captures using batched forward model
 kx_all = torch.tensor([k[0] for k in k_vectors])
 ky_all = torch.tensor([k[1] for k in k_vectors])
-captures_batched = forward_model(O, P, kx_all, ky_all)  # [B, H, W]
+captures_batched = forward_model(image_complex, pupil, kx_all, ky_all)  # [B, H, W]
 captures = [captures_batched[i] for i in range(len(k_vectors))]
 
+# 'training loop' but really its just 'solve the inverse problem'
 pred_O, _, losses = training_loop(captures, k_vectors, 512)
 pred_amplitude = torch.abs(pred_O)
 
