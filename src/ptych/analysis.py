@@ -2,7 +2,7 @@ from matplotlib import pyplot as plt
 import torch
 
 
-def plot_comparison(images: list[torch.Tensor], labels: list[str]):
+def plot_comparison(images: list[torch.Tensor], labels: list[str], save_path: str | None = None):
     assert len(images) == len(labels), "Number of images and labels must match"
     n = len(images)
 
@@ -15,4 +15,8 @@ def plot_comparison(images: list[torch.Tensor], labels: list[str]):
         _ = plt.axis('off')
 
     _ = plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+
     _ = plt.show()

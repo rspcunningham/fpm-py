@@ -37,22 +37,27 @@ print(f"total k_vectors: {len(k_vectors)}")
 # Generate captures using batched forward model
 kx_all = torch.tensor([k[0] for k in k_vectors])
 ky_all = torch.tensor([k[1] for k in k_vectors])
-captures_batched = forward_model(image_complex, pupil, kx_all, ky_all)  # [B, H, W]
+captures_batched = forward_model(image_complex, pupil, kx_all, ky_all, downsample_factor=2)  # [B, H, W]
 captures = [captures_batched[i] for i in range(len(k_vectors))]
 
 # 'training loop' but really its just 'solve the inverse problem'
-pred_O, _, losses = training_loop(captures, k_vectors, 512)
-pred_amplitude = torch.abs(pred_O)
+pred_O, _, metrics = training_loop(captures, k_vectors, 1024)
+pred_amplitude = torch.abs(pred_O) / torch.max(torch.abs(pred_O))
 
 # Plot loss curve
 plt.figure(figsize=(10, 4))
-plt.plot(losses)
+plt.plot(metrics['losses_per_epoch'])
+plt.plot(metrics['lr_per_epoch'])
 plt.xlabel('Epoch')
-plt.ylabel('Loss')
+plt.ylabel('Value')
 plt.title('Training Loss')
 plt.grid(True)
 plt.tight_layout()
 plt.show()
 
+print(f"original: {amplitude.shape} | {amplitude.min().item()}, {amplitude.max().item()}")
+print(f"capture: {captures[0].shape} | {captures[0].min().item()}, {captures[0].max().item()}")
+print(f"predicted: {pred_amplitude.shape} | {pred_amplitude.min().item()}, {pred_amplitude.max().item()}")
+
 # Plot comparison
-plot_comparison([amplitude.cpu(), captures[60].cpu(), pred_amplitude.cpu()], ['Original', 'Center Illumination', 'Predicted'])
+plot_comparison([amplitude.cpu(), captures[60].cpu(), pred_amplitude.cpu()], ['Original', 'Center Illumination', 'Predicted'], 'tmp/l1_loss_100_csa.png')

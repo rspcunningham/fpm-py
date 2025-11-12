@@ -2,18 +2,27 @@
 The FP forward model: O, P, {k_i}  →  {I_i}
 """
 from typing import Callable, cast
+from functools import partial
 import torch
+import torch.nn.functional as F
 
-fft2 = cast(Callable[..., torch.Tensor], torch.fft.fft2)
-fftshift = cast(Callable[..., torch.Tensor], torch.fft.fftshift)
-ifft2 = cast(Callable[..., torch.Tensor], torch.fft.ifft2)
-ifftshift = cast(Callable[..., torch.Tensor], torch.fft.ifftshift)
+# Use unitary Fourier transforms
+_fft2_ortho  = partial(torch.fft.fft2,  norm="ortho")
+_ifft2_ortho = partial(torch.fft.ifft2, norm="ortho")
+_fftshift    = torch.fft.fftshift
+_ifftshift   = torch.fft.ifftshift
+
+fft2 = cast(Callable[..., torch.Tensor], _fft2_ortho)
+ifft2 = cast(Callable[..., torch.Tensor], _ifft2_ortho)
+fftshift = cast(Callable[..., torch.Tensor], _fftshift)
+ifftshift = cast(Callable[..., torch.Tensor], _ifftshift)
 
 def forward_model(
     object_tensor: torch.Tensor,
     pupil_tensor: torch.Tensor,
     kx: torch.Tensor,
     ky: torch.Tensor,
+    downsample_factor: int = 1
 ) -> torch.Tensor:
     """
     Forward model - returns images at each k-space location given an object
@@ -23,6 +32,7 @@ def forward_model(
         pupil_tensor (torch.Tensor): Pupil tensor [H, W]
         kx (torch.Tensor): Wavevector shift(s) in x direction. Tensor [B]
         ky (torch.Tensor): Wavevector shift(s) in y direction. Tensor [B]
+        downsampling_factor (int): Downsampling factor for the output images
 
     Returns:
         torch.Tensor: Predicted intensities [B, H, W]
@@ -60,5 +70,8 @@ def forward_model(
 
     # Compute intensities
     predicted_intensities = torch.abs(complex_image_fields)**2  # [B, H, W]
+
+    if downsample_factor > 1:
+        predicted_intensities = F.avg_pool2d(predicted_intensities, kernel_size=downsample_factor, stride=downsample_factor)
 
     return predicted_intensities
