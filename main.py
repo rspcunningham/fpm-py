@@ -1,6 +1,5 @@
-from ptych import forward_model
+from ptych import forward_model, solve_inverse
 from ptych.analysis import plot_comparison, plot_curves
-from ptych.train import training_loop
 import torch
 from torchvision.io import read_image, ImageReadMode
 from itertools import product
@@ -12,8 +11,6 @@ torch.set_default_device(DEVICE)
 amplitude = read_image('data/bars.png', mode=ImageReadMode.GRAY).squeeze(0).float() / 255.0
 phase = torch.pi * amplitude
 image_complex = (amplitude * torch.exp(1j * phase)).to(DEVICE)
-
-print(f"amplitude: {amplitude.device}")
 
 height, width = image_complex.shape
 print(f"Image shape: {height}x{width}")
@@ -39,8 +36,8 @@ ky_all = torch.tensor([k[1] for k in k_vectors])
 captures_batched = forward_model(image_complex, pupil, kx_all, ky_all, downsample_factor=2)  # [B, H, W]
 captures = [captures_batched[i] for i in range(len(k_vectors))]
 
-# 'training loop' but really its just 'solve the inverse problem'
-pred_O, _, metrics = training_loop(captures, k_vectors, 1024)
+# solve the inverse problem
+pred_O, _, metrics = solve_inverse(captures, k_vectors, 1024)
 pred_amplitude = torch.abs(pred_O) / torch.max(torch.abs(pred_O))
 
 print(f"original: {amplitude.shape} | {amplitude.min().item()}, {amplitude.max().item()}")
@@ -48,5 +45,5 @@ print(f"capture: {captures[0].shape} | {captures[0].min().item()}, {captures[0].
 print(f"predicted: {pred_amplitude.shape} | {pred_amplitude.min().item()}, {pred_amplitude.max().item()}")
 
 # Plot comparison
-plot_comparison([amplitude.cpu(), captures[60].cpu(), pred_amplitude.cpu()], ['Original', 'Center Illumination', 'Predicted'], 'tmp/l1_loss_100_csa.png')
+plot_comparison([amplitude.cpu(), captures[60].cpu(), pred_amplitude.cpu()], ['Original', 'Center Illumination', 'Predicted'], 'tmp/adamw.png')
 plot_curves(metrics)

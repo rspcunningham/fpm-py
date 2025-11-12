@@ -7,15 +7,10 @@ import torch
 import torch.nn.functional as F
 
 # Use unitary Fourier transforms
-_fft2_ortho  = partial(torch.fft.fft2,  norm="ortho")
-_ifft2_ortho = partial(torch.fft.ifft2, norm="ortho")
-_fftshift    = torch.fft.fftshift
-_ifftshift   = torch.fft.ifftshift
-
-fft2 = cast(Callable[..., torch.Tensor], _fft2_ortho)
-ifft2 = cast(Callable[..., torch.Tensor], _ifft2_ortho)
-fftshift = cast(Callable[..., torch.Tensor], _fftshift)
-ifftshift = cast(Callable[..., torch.Tensor], _ifftshift)
+fft2 = cast(Callable[..., torch.Tensor], partial(torch.fft.fft2, norm="ortho"))
+ifft2 = cast(Callable[..., torch.Tensor], partial(torch.fft.ifft2, norm="ortho"))
+fftshift = cast(Callable[..., torch.Tensor], torch.fft.fftshift)
+ifftshift = cast(Callable[..., torch.Tensor], torch.fft.ifftshift)
 
 def forward_model(
     object_tensor: torch.Tensor,
