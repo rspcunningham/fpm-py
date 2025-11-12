@@ -10,3 +10,5 @@ dist/
 build/
 *.pyc
 *.pyo
+
+tmp/

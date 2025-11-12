@@ -59,4 +59,4 @@ print(f"capture: {captures[0].shape} | {captures[0].min().item()}, {captures[0].
 print(f"predicted: {pred_amplitude.shape} | {pred_amplitude.min().item()}, {pred_amplitude.max().item()}")
 
 # Plot comparison
-plot_comparison([amplitude.cpu(), captures[60].cpu(), pred_amplitude.cpu()], ['Original', 'Center Illumination', 'Predicted'])
+plot_comparison([amplitude.cpu(), captures[60].cpu(), pred_amplitude.cpu()], ['Original', 'Center Illumination', 'Predicted'], 'tmp/l1_loss.png')
