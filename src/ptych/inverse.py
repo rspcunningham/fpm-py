@@ -1,9 +1,8 @@
-from sys import meta_path
 from ptych.forward import forward_model
 import torch
 from tqdm import tqdm
 
-def training_loop(captures: list[torch.Tensor], k_vectors: list[tuple[int, int]], output_size: int) -> tuple[torch.Tensor, torch.Tensor, dict[str, list[float]]]:
+def solve_inverse(captures: list[torch.Tensor], k_vectors: list[tuple[int, int]], output_size: int) -> tuple[torch.Tensor, torch.Tensor, dict[str, list[float]]]:
 
     n_captures = len(captures)
     assert n_captures == len(k_vectors), "Captures and k-vectors must match"
@@ -15,12 +14,18 @@ def training_loop(captures: list[torch.Tensor], k_vectors: list[tuple[int, int]]
     print("Output size:", output_size)
 
     # Initiate the learnable parameters
-    O = (0.5 * torch.ones(output_size, output_size, dtype=torch.complex64)).requires_grad_(True)
-    P = (0.5 * torch.ones(output_size, output_size, dtype=torch.complex64)).requires_grad_(True)
+    O_real = (0.5 * torch.ones(output_size, output_size, dtype=torch.float32)).requires_grad_(True)
+    O_imag = (torch.zeros(output_size, output_size, dtype=torch.float32)).requires_grad_(True)
+    P_real = (0.5 * torch.ones(output_size, output_size, dtype=torch.float32)).requires_grad_(True)
+    P_imag = (torch.zeros(output_size, output_size, dtype=torch.float32)).requires_grad_(True)
+
+    O_full = O_real + 1j * O_imag
+    P_full = P_real + 1j * P_imag
+
     downsample_factor = output_size // captures[0].shape[0]
 
     # Initialize the optimizer
-    optimizer = torch.optim.AdamW([O, P], lr=0.1)
+    optimizer = torch.optim.AdamW([O_real, O_imag, P_real, P_imag], lr=0.1)
 
     # Add scheduler
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
@@ -35,20 +40,20 @@ def training_loop(captures: list[torch.Tensor], k_vectors: list[tuple[int, int]]
     captures_batch = torch.stack(captures)  # [B, H, W]
 
     # Telemetry
-    metrics = {
-        'losses_per_epoch': [],
-        'lr_per_epoch': []
+    metrics: dict[str, list[float]] = {
+        'loss': [],
+        'lr': [],
+        'object_max': [],
+        'pupil_max': []
     }
 
     # Training loop
     for _ in tqdm(range(epochs), desc="Solving"):
         # Batched forward pass
-        predicted_intensities = forward_model(O, P, kx_batch, ky_batch, downsample_factor)  # [B, H, W]
+        predicted_intensities = forward_model(O_full, P_full, kx_batch, ky_batch, downsample_factor)  # [B, H, W]
 
         # Compute loss across all captures
-        #total_loss = torch.nn.functional.mse_loss(predicted_intensities, captures_batch)
         total_loss = torch.nn.functional.l1_loss(predicted_intensities, captures_batch)
-        #total_loss = torch.nn.functional.smooth_l1_loss(predicted_intensities, captures_batch)
 
         # Backward pass
         optimizer.zero_grad()
@@ -57,7 +62,9 @@ def training_loop(captures: list[torch.Tensor], k_vectors: list[tuple[int, int]]
         scheduler.step()
 
         # Record loss for this epoch
-        metrics['losses_per_epoch'].append(total_loss.item())
-        metrics['lr_per_epoch'].append(scheduler.get_last_lr()[0])
+        metrics['loss'].append(total_loss.item())
+        metrics['lr'].append(scheduler.get_last_lr()[0])
+        metrics['object_max'].append(O_full.abs().max().item())
+        metrics['pupil_max'].append(P_full.abs().max().item())
 
-    return O.detach(), P.detach(), metrics
+    return O_full.detach(), P_full.detach(), metrics
