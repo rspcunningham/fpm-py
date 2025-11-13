@@ -60,11 +60,11 @@ This synthetic data allows validation of the reconstruction algorithm against kn
 
 ## Training Loop & Inverse Problem
 
-The training loop (`src/ptych/train.py`) solves the inverse problem:
+The training loop (`src/ptych/inverse.py`) solves the inverse problem:
 
 ```
 Given: {I_i} (measured intensities), {k_i} (known illumination angles)
-Find: O (object), P (pupil) that minimize ||forward_model(O, P, k) - I||²
+Find: O (object), P (pupil) that minimize ||forward_model(O, P, k) - I||₁
 ```
 
 **Algorithm:**
@@ -75,7 +75,7 @@ enabled. Starting from a neutral initialization avoids biasing the reconstructio
 2. **Forward Pass**: For each iteration, the current estimates of O and P are passed through the forward model with all
 illumination angles to predict what the measurements should be.
 
-3. **Loss Computation**: Mean squared error between predicted intensities and measured intensities across all pixels and
+3. **Loss Computation**: Mean average error between predicted intensities and measured intensities across all pixels and
 all captures. This differentiable loss allows gradient-based optimization.
 
 4. **Backpropagation**: PyTorch's autograd computes gradients ∂loss/∂O and ∂loss/∂P by backpropagating through the entire
@@ -102,7 +102,7 @@ fpm_py/
 ├── src/ptych/
 │   ├── __init__.py           # Package exports (forward_model)
 │   ├── forward.py            # Forward model implementation
-│   ├── train.py              # Training loop for inverse problem
+│   ├── inverse.py            # Training loop for inverse problem
 │   └── analysis.py           # Visualization utilities
 └── pyproject.toml            # Project dependencies
 ```
