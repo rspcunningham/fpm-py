@@ -1,7 +1,7 @@
 from ptych.forward import forward_model
+from ptych.utils import check_range
 import torch
 from tqdm import tqdm
-
 from jaxtyping import Float, Complex
 
 def solve_inverse(
@@ -12,7 +12,13 @@ def solve_inverse(
     ky_batch: Float[torch.Tensor, "B"], # [B] float on (-0.5, 0.5)
     learn_pupil: bool = True,
     learn_k_vectors: bool = False,
-) -> tuple[Float[torch.Tensor, "N N"], Float[torch.Tensor, "N N"], dict[str, list[float]]]:
+) -> tuple[Complex[torch.Tensor, "N N"], Complex[torch.Tensor, "N N"], dict[str, list[float]]]:
+
+    check_range(captures, 0, 1, "captures")
+    check_range(object, 0, 1, "object")
+    check_range(pupil, 0, 1, "pupil")
+    check_range(kx_batch, -0.5, 0.5, "kx_batch")
+    check_range(ky_batch, -0.5, 0.5, "ky_batch")
 
     epochs = 500
 
