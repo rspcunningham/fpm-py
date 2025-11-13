@@ -1,16 +1,19 @@
 from ptych import forward_model, solve_inverse
 from ptych.analysis import plot_comparison, plot_curves
+from ptych.utils import get_default_device
 import torch
 from torchvision.io import read_image, ImageReadMode
 from itertools import product
 
-DEVICE = torch.device('mps')
-torch.set_default_device(DEVICE)
+pytorch_device = get_default_device()
+torch.set_default_device(pytorch_device)
+
+print("Running on: ", pytorch_device)
 
 # load the sample image and set phase = torch.pi * amplitude
 amplitude = read_image('data/bars.png', mode=ImageReadMode.GRAY).squeeze(0).float() / 255.0
 phase = torch.pi * amplitude
-image_complex = (amplitude * torch.exp(1j * phase)).to(DEVICE)
+image_complex = (amplitude * torch.exp(1j * phase)).to(pytorch_device)
 
 height, width = image_complex.shape
 print(f"Image shape: {height}x{width}")
