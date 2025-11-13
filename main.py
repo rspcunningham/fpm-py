@@ -20,14 +20,17 @@ ky_all_noise += noise_y
 analysis.plot_k_vectors(kx_all, ky_all, kx_all_noise, ky_all_noise)
 
 captures = forward_model(object, pupil, kx_all_noise, ky_all_noise, downsample_factor=2)  # [B, H, W]
+captures_normalized_all = (captures - captures.min()) / (captures.max() - captures.min() + 1e-8)
+captures_normalized_each = (captures - captures.min(dim=1, keepdim=True).values) / \
+                      (captures.max(dim=1, keepdim=True).values - captures.min(dim=1, keepdim=True).values + 1e-8)
 
 output_size = 1024
 object = 0.5 * torch.ones(output_size, output_size, dtype=torch.complex64)
 pupil = 0.5 * torch.ones(output_size, output_size, dtype=torch.complex64)
 
 #prediction_good, _, _ = solve_inverse(captures, object, pupil, kx_all, ky_all)
-prediction_noisy, _, _ = solve_inverse(captures, object, pupil, kx_all, ky_all)
-prediction_noisy_learned, _, metrics = solve_inverse(captures, object, pupil, kx_all, ky_all, learn_k_vectors=True)
+prediction_noisy, _, _ = solve_inverse(captures_normalized_each, object, pupil, kx_all, ky_all)
+prediction_noisy_learned, _, metrics = solve_inverse(captures_normalized_each, object, pupil, kx_all, ky_all, learn_k_vectors=True)
 
 analysis.plot_comparison([obj_to_amp(prediction_noisy), obj_to_amp(prediction_noisy_learned)], ['Noisy', 'Noisy Learned'])
 analysis.plot_curves(metrics)
