@@ -1,10 +1,8 @@
 from ptych import forward_model, solve_inverse, analysis
+from ptych.utils import obj_to_amp
 import torch
 
 from initialize import load_object_and_pupil, load_k_vectors
-
-def obj_to_amp(obj: torch.Tensor):
-    return (torch.abs(obj) / torch.max(torch.abs(obj))).cpu()
 
 object, pupil = load_object_and_pupil()
 kx_all, ky_all = load_k_vectors(0.5, 0.1)
