@@ -32,18 +32,19 @@ zero_idx = k_vectors.index((0, 0))
 print(f"total k_vectors: {len(k_vectors)}")
 
 # Generate captures using batched forward model
-kx_all = torch.tensor([k[0] for k in k_vectors])
-ky_all = torch.tensor([k[1] for k in k_vectors])
-captures_batched = forward_model(image_complex, pupil, kx_all, ky_all, downsample_factor=2)  # [B, H, W]
-captures = [captures_batched[i] for i in range(len(k_vectors))]
+kx_all = torch.tensor([k[0] for k in k_vectors]).float()
+ky_all = torch.tensor([k[1] for k in k_vectors]).float()
+captures = forward_model(image_complex, pupil, kx_all, ky_all, downsample_factor=2)  # [B, H, W]
 
 # solve the inverse problem
-pred_O, pred_P, metrics = solve_inverse(captures, k_vectors, 1024)
-#pred_O, _, metrics = exp.solve_inverse(captures, 512)
+output_size = 1024
+object = 0.5 * torch.ones(output_size, output_size, dtype=torch.complex64)
+pupil = 0.5 * torch.ones(output_size, output_size, dtype=torch.complex64)
+
+pred_O, _, metrics = solve_inverse(captures, object, pupil, kx_all, ky_all)
 pred_O_amplitude = torch.abs(pred_O) / torch.max(torch.abs(pred_O))
-pred_P_amplitude = torch.abs(pred_P) / torch.max(torch.abs(pred_P))
 
 # Plot analytics
-plot_comparison([amplitude.cpu(), captures[zero_idx].cpu(), pred_O_amplitude.cpu()], ['Original', 'Center Illumination', 'Predicted'], 'tmp/adamw.png')
-plot_comparison([pred_O_amplitude.cpu(), pred_P_amplitude.cpu()], ['Object Amplitude', 'Pupil Amplitude'])
+plot_comparison([amplitude.cpu(), captures[zero_idx].cpu(), pred_O_amplitude.cpu()], ['Original', 'Predicted with learned k-vectors', 'Predicted'], 'tmp/adamw.png')
+#plot_comparison([pred_O_amplitude.cpu(), pred_P_amplitude.cpu()], ['Object Amplitude', 'Pupil Amplitude'])
 plot_curves(metrics)
