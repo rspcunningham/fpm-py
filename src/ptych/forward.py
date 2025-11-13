@@ -44,8 +44,8 @@ def forward_model(
     # Create phase ramps for all k-vectors at once
     # Phase ramp: exp(i * 2π * (kx*x + ky*y) / N)
     # Shape: [B, H, W]
-    kx_normalized = kx.float().view(-1, 1, 1) / W  # Normalize by image size
-    ky_normalized = ky.float().view(-1, 1, 1) / H
+    kx_normalized = kx.view(-1, 1, 1) / W  # Normalize by image size
+    ky_normalized = ky.view(-1, 1, 1) / H
 
     phase = 2 * torch.pi * (kx_normalized * x_grid[None, :, :] + ky_normalized * y_grid[None, :, :])
     phase_ramps = torch.exp(1j * phase.to(dtype))  # [B, H, W]
