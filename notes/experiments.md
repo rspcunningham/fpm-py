@@ -1,6 +1,6 @@
 # Fourier Ptychography Experiment Ideas
 
-## 1) k-noise
+## 1) k-noise --> `k-space-exploration`
 
  - define k vectors
  - generate simulated captures with those k vectors
