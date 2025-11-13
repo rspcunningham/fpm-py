@@ -35,7 +35,7 @@ def solve_inverse(
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer,
         T_max=epochs,  # total epochs
-        eta_min=0.001  # minimum LR
+        eta_min=0.01  # minimum LR
     )
 
     # Prepare batched k-vectors and captures

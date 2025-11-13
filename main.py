@@ -1,5 +1,4 @@
 from ptych import forward_model, solve_inverse
-import ptych.experimental as exp
 from ptych.analysis import plot_comparison, plot_curves
 import torch
 from torchvision.io import read_image, ImageReadMode
