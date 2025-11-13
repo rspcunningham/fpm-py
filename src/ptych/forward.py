@@ -5,6 +5,7 @@ from typing import Callable, cast
 from functools import partial
 import torch
 import torch.nn.functional as F
+from jaxtyping import Complex, Float
 
 # Use unitary Fourier transforms
 fft2 = cast(Callable[..., torch.Tensor], partial(torch.fft.fft2, norm="ortho"))
@@ -13,12 +14,12 @@ fftshift = cast(Callable[..., torch.Tensor], torch.fft.fftshift)
 ifftshift = cast(Callable[..., torch.Tensor], torch.fft.ifftshift)
 
 def forward_model(
-    object_tensor: torch.Tensor,
-    pupil_tensor: torch.Tensor,
-    kx: torch.Tensor,
-    ky: torch.Tensor,
+    object_tensor: Complex[torch.Tensor, "N N"],
+    pupil_tensor: Complex[torch.Tensor, "N N"],
+    kx: Float[torch.Tensor, "B"],
+    ky: Float[torch.Tensor, "B"],
     downsample_factor: int = 1
-) -> torch.Tensor:
+) -> Complex[torch.Tensor, "B N/{downsample_factor} N/{downsample_factor}"]:
     """
     Forward model - returns images at each k-space location given an object
 
@@ -30,7 +31,7 @@ def forward_model(
         downsampling_factor (int): Downsampling factor for the output images
 
     Returns:
-        torch.Tensor: Predicted intensities [B, N, N]
+        torch.Tensor: Predicted intensities [B, N/downsample_factor, N/downsample_factor]
     """
 
     N, _ = object_tensor.shape
