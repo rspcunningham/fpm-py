@@ -2,17 +2,19 @@ from ptych.forward import forward_model
 import torch
 from tqdm import tqdm
 
+from jaxtyping import Float32
+
 def solve_inverse(
-    captures: torch.Tensor, # [B, h, w] float
-    object: torch.Tensor, # [H, W] complex
-    pupil: torch.Tensor, # [H, W] complex
-    kx_batch: torch.Tensor, # [B] float
-    ky_batch: torch.Tensor, # [B] float
+    captures: Float32[torch.Tensor, "B n n"], # [B, n, n] float on (0, 1)
+    object: Float32[torch.Tensor, "N N"], # [N, N] complex on (0, 1)
+    pupil: Float32[torch.Tensor, "N N"], # [N, N] complex on (0, 1)
+    kx_batch: Float32[torch.Tensor, "B"], # [B] float on (-0.5, 0.5)
+    ky_batch: Float32[torch.Tensor, "B"], # [B] float on (-0.5, 0.5)
     learn_pupil: bool = True,
     learn_k_vectors: bool = False,
-) -> tuple[torch.Tensor, torch.Tensor, dict[str, list[float]]]:
+) -> tuple[Float32[torch.Tensor, "N N"], Float32[torch.Tensor, "N N"], dict[str, list[float]]]:
 
-    epochs = 100
+    epochs = 500
 
     output_size = object.shape[0]
     downsample_factor = output_size // captures[0].shape[0]
