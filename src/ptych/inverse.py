@@ -8,12 +8,9 @@ def solve_inverse(
     pupil: torch.Tensor, # [H, W] complex
     kx_batch: torch.Tensor, # [B] float
     ky_batch: torch.Tensor, # [B] float
-    learn_object: bool = True,
     learn_pupil: bool = True,
     learn_k_vectors: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor, dict[str, list[float]]]:
-
-    assert learn_object or learn_pupil or learn_k_vectors, "At least one of learn_object, learn_pupil, or learn_k_vectors must be True"
 
     epochs = 100
 
@@ -24,21 +21,23 @@ def solve_inverse(
     print("Output size:", output_size)
     print("Downsample factor:", downsample_factor)
 
-    learned_tensors: list[torch.Tensor] = []
-    if learn_object:
-        object = object.clone().detach().requires_grad_(True)
-        learned_tensors.append(object)
+    learned_tensors: list[dict[str, torch.Tensor | float]] = []
+    object = object.clone().detach().requires_grad_(True)
+    learned_tensors.append({'params': object, 'lr': 0.1})
+
     if learn_pupil:
         pupil = pupil.clone().detach().requires_grad_(True)
-        learned_tensors.append(pupil)
+        learned_tensors.append({'params': pupil, 'lr': 0.1})
     if learn_k_vectors:
         kx_batch = kx_batch.clone().detach().requires_grad_(True)
         ky_batch = ky_batch.clone().detach().requires_grad_(True)
-        learned_tensors.append(kx_batch)
-        learned_tensors.append(ky_batch)
+        learned_tensors.append({'params': kx_batch, 'lr': 0.1})
+        learned_tensors.append({'params': ky_batch, 'lr': 0.1})
+
+    print(f"Learning {len(learned_tensors)} tensors | pupil:{learn_pupil}, k_vectors:{learn_k_vectors}")
 
     # Initialize the optimizer
-    optimizer = torch.optim.AdamW(learned_tensors, lr=0.1)
+    optimizer = torch.optim.AdamW(learned_tensors)
 
     # Add scheduler
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
