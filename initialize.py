@@ -34,7 +34,9 @@ def load_k_vectors(width: float, pitch: float) -> tuple[torch.Tensor, torch.Tens
       min_val = -width / 2
       max_val = width / 2
 
-      k_range = torch.arange(min_val, max_val, pitch)
+      print(min_val, max_val)
+
+      k_range = torch.arange(min_val, max_val + pitch, pitch)
       ky_grid, kx_grid = torch.meshgrid(k_range, k_range, indexing='ij')
 
       kx_all = kx_grid.flatten()
