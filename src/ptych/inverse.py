@@ -14,11 +14,11 @@ def solve_inverse(
     learn_k_vectors: bool = False,
 ) -> tuple[Complex[torch.Tensor, "N N"], Complex[torch.Tensor, "N N"], dict[str, list[float]]]:
 
-    check_range(captures, 0, 1, "captures")
-    check_range(object, 0, 1, "object")
-    check_range(pupil, 0, 1, "pupil")
-    check_range(kx_batch, -0.5, 0.5, "kx_batch")
-    check_range(ky_batch, -0.5, 0.5, "ky_batch")
+    #check_range(captures, 0, 1, "captures")
+    #check_range(object, 0, 1, "object")
+    #check_range(pupil, 0, 1, "pupil")
+    #check_range(kx_batch, -0.5, 0.5, "kx_batch")
+    #check_range(ky_batch, -0.5, 0.5, "ky_batch")
 
     epochs = 500
 
