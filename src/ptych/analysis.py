@@ -3,27 +3,21 @@ import torch
 import seaborn as sns
 
 
-def plot_k_vectors(kx_before: torch.Tensor, ky_before: torch.Tensor,
-                   kx_after: torch.Tensor, ky_after: torch.Tensor,
-                   save_path: str | None = None):
+def plot_k_vectors(k_pairs: list[tuple[torch.Tensor, torch.Tensor]], labels: list[str], save_path: str | None = None):
     """Plot k-space points before and after adding noise."""
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+    assert len(k_pairs) == len(labels), "Number of k-pairs and labels must match"
 
-    # Before noise
-    sns.scatterplot(x=kx_before.cpu().numpy(), y=ky_before.cpu().numpy(), ax=ax1, s=50)
-    ax1.set_xlabel('kx')
-    ax1.set_ylabel('ky')
-    ax1.set_title('K-space Points (Before Noise)')
-    ax1.set_aspect('equal')
-    ax1.grid(True, alpha=0.3)
+    fig, axes = plt.subplots(1, len(k_pairs), figsize=(7 * len(k_pairs), 6))
 
-    # After noise
-    sns.scatterplot(x=kx_after.cpu().numpy(), y=ky_after.cpu().numpy(), ax=ax2, s=50)
-    ax2.set_xlabel('kx')
-    ax2.set_ylabel('ky')
-    ax2.set_title(f'K-space Points (After Noise)')
-    ax2.set_aspect('equal')
-    ax2.grid(True, alpha=0.3)
+    for i, (k_pair, label) in enumerate(zip(k_pairs, labels)):
+        ax = axes[i]
+
+        sns.scatterplot(x=k_pair[0].cpu().numpy(), y=k_pair[1].cpu().numpy(), ax=ax, s=50)
+        ax.set_xlabel('kx')
+        ax.set_ylabel('ky')
+        ax.set_title(f'K-space Points ({label})')
+        ax.set_aspect('equal')
+        ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
 
