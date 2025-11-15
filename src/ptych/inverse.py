@@ -39,8 +39,8 @@ def solve_inverse(
     if learn_k_vectors:
         kx_batch = kx_batch.clone().detach().requires_grad_(True)
         ky_batch = ky_batch.clone().detach().requires_grad_(True)
-        learned_tensors.append({'params': kx_batch, 'lr': 0.1})
-        learned_tensors.append({'params': ky_batch, 'lr': 0.1})
+        learned_tensors.append({'params': kx_batch, 'lr': 0.01})
+        learned_tensors.append({'params': ky_batch, 'lr': 0.01})
 
     print(f"Learning {len(learned_tensors)} tensors | pupil:{learn_pupil}, k_vectors:{learn_k_vectors}")
 
