@@ -39,19 +39,26 @@ def solve_inverse(
     if learn_k_vectors:
         kx_batch = kx_batch.clone().detach().requires_grad_(True)
         ky_batch = ky_batch.clone().detach().requires_grad_(True)
-        learned_tensors.append({'params': kx_batch, 'lr': 0.01})
-        learned_tensors.append({'params': ky_batch, 'lr': 0.01})
-
-    print(f"Learning {len(learned_tensors)} tensors | pupil:{learn_pupil}, k_vectors:{learn_k_vectors}")
+        learned_tensors.append({'params': kx_batch, 'lr': 0.1})
+        learned_tensors.append({'params': ky_batch, 'lr': 0.1})
 
     # Initialize the optimizer
     optimizer = torch.optim.AdamW(learned_tensors)
 
     # Add scheduler
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+    """scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer,
         T_max=epochs,  # total epochs
         eta_min=0.01  # minimum LR
+    )"""
+
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        optimizer,
+        max_lr=0.05,
+        total_steps=epochs,
+        pct_start=0.3,
+        anneal_strategy='cos',
+        final_div_factor=1e4,
     )
 
     # Telemetry
