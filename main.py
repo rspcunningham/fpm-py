@@ -1,53 +1,38 @@
-from ptych import forward_model, solve_inverse
-from ptych.analysis import plot_comparison, plot_curves
-from ptych.utils import get_default_device
+from ptych import forward_model, solve_inverse, analysis
+from ptych.utils import obj_to_amp, normalize_captures
 import torch
-from torchvision.io import read_image, ImageReadMode
-from itertools import product
 
-pytorch_device = get_default_device()
-torch.set_default_device(pytorch_device)
+from initialize import load_object_and_pupil, load_k_vectors
 
-print("Running on: ", pytorch_device)
+k_pitch = 0.02
+noise_norm_std = 1
 
-# load the sample image and set phase = torch.pi * amplitude
-amplitude = read_image('data/bars.png', mode=ImageReadMode.GRAY).squeeze(0).float() / 255.0
-phase = torch.pi * amplitude
-image_complex = (amplitude * torch.exp(1j * phase)).to(pytorch_device)
+object, pupil = load_object_and_pupil()
+kx_all, ky_all = load_k_vectors(0.2, k_pitch)
 
-height, width = image_complex.shape
-print(f"Image shape: {height}x{width}")
+def generate_noise(norm_sigma: float, vector: torch.Tensor):
+    sigma = norm_sigma * k_pitch
+    noise = torch.randn_like(vector) * sigma
+    return vector + noise
 
-# Create circular pupil
-radius = 50
-y_coords, x_coords = torch.meshgrid(
-    torch.arange(height, dtype=torch.float32),
-    torch.arange(width, dtype=torch.float32),
-    indexing='ij'
-)
-center_y, center_x = height / 2, width / 2
-distance = torch.sqrt((x_coords - center_x)**2 + (y_coords - center_y)**2)
-pupil = (distance <= radius).float()
+kx_all_noise = generate_noise(noise_norm_std, kx_all.clone())
+ky_all_noise = generate_noise(noise_norm_std, ky_all.clone())
 
-# create grid of k-vectors
-k_vectors: list[tuple[int, int]] = [(k[0], k[1]) for k in product(range(-50, 51, 10), repeat=2)]
-zero_idx = k_vectors.index((0, 0))
-print(f"total k_vectors: {len(k_vectors)}")
+# Plot k-space points before and after noise
+analysis.plot_k_vectors([(kx_all, ky_all), (kx_all_noise, ky_all_noise)], ['Original', f'Noise @ σ = {noise_norm_std} k-pitch'])
 
-# Generate captures using batched forward model
-kx_all = torch.tensor([k[0] for k in k_vectors]).float()
-ky_all = torch.tensor([k[1] for k in k_vectors]).float()
-captures = forward_model(image_complex, pupil, kx_all, ky_all, downsample_factor=2)  # [B, H, W]
+captures = forward_model(object, pupil, kx_all, ky_all, downsample_factor=2)  # [B, H, W]
 
-# solve the inverse problem
-output_size = 1024
+output_size = 512
 object = 0.5 * torch.ones(output_size, output_size, dtype=torch.complex64)
 pupil = 0.5 * torch.ones(output_size, output_size, dtype=torch.complex64)
 
-pred_O, _, metrics = solve_inverse(captures, object, pupil, kx_all, ky_all)
-pred_O_amplitude = torch.abs(pred_O) / torch.max(torch.abs(pred_O))
+prediction_good, pupil_good, metrics_good = solve_inverse(captures, object, pupil, kx_all, ky_all)
+prediction_noisy, pupil_noisy, metrics_noisy = solve_inverse(captures, object, pupil, kx_all_noise, ky_all_noise)
+prediction_noisy_learned, pupil_noisy_learned, metrics_noisy_learned = solve_inverse(captures, object, pupil, kx_all_noise, ky_all_noise, learn_k_vectors=True)
 
-# Plot analytics
-plot_comparison([amplitude.cpu(), captures[zero_idx].cpu(), pred_O_amplitude.cpu()], ['Original', 'Predicted with learned k-vectors', 'Predicted'], 'tmp/adamw.png')
-#plot_comparison([pred_O_amplitude.cpu(), pred_P_amplitude.cpu()], ['Object Amplitude', 'Pupil Amplitude'])
-plot_curves(metrics)
+analysis.plot_comparison([obj_to_amp(prediction_good), obj_to_amp(prediction_noisy), obj_to_amp(prediction_noisy_learned)], ['Good', 'Noisy', 'Noisy Learned'], "tmp/test_1.png")
+
+analysis.plot_curves(metrics_good, "tmp/loss_good.png")
+analysis.plot_curves(metrics_noisy, "tmp/loss_noisy.png")
+analysis.plot_curves(metrics_noisy_learned, "tmp/loss_noisy_learned.png")
