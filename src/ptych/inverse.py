@@ -1,21 +1,26 @@
 from ptych.forward import forward_model
+#from ptych.utils import check_range
 import torch
 from tqdm import tqdm
+from jaxtyping import Float, Complex
 
 def solve_inverse(
-    captures: torch.Tensor, # [B, h, w] float
-    object: torch.Tensor, # [H, W] complex
-    pupil: torch.Tensor, # [H, W] complex
-    kx_batch: torch.Tensor, # [B] float
-    ky_batch: torch.Tensor, # [B] float
-    learn_object: bool = True,
+    captures: Float[torch.Tensor, "B n n"], # [B, n, n] float on (0, 1)
+    object: Complex[torch.Tensor, "N N"], # [N, N] complex on (0, 1)
+    pupil: Complex[torch.Tensor, "N N"], # [N, N] complex on (0, 1)
+    kx_batch: Float[torch.Tensor, "B"], # [B] float on (-0.5, 0.5)
+    ky_batch: Float[torch.Tensor, "B"], # [B] float on (-0.5, 0.5)
     learn_pupil: bool = True,
     learn_k_vectors: bool = False,
-) -> tuple[torch.Tensor, torch.Tensor, dict[str, list[float]]]:
+) -> tuple[Complex[torch.Tensor, "N N"], Complex[torch.Tensor, "N N"], dict[str, list[float]]]:
 
-    assert learn_object or learn_pupil or learn_k_vectors, "At least one of learn_object, learn_pupil, or learn_k_vectors must be True"
+    #check_range(captures, 0, 1, "captures")
+    #check_range(object, 0, 1, "object")
+    #check_range(pupil, 0, 1, "pupil")
+    #check_range(kx_batch, -0.5, 0.5, "kx_batch")
+    #check_range(ky_batch, -0.5, 0.5, "ky_batch")
 
-    epochs = 100
+    epochs = 500
 
     output_size = object.shape[0]
     downsample_factor = output_size // captures[0].shape[0]
@@ -24,27 +29,36 @@ def solve_inverse(
     print("Output size:", output_size)
     print("Downsample factor:", downsample_factor)
 
-    learned_tensors: list[torch.Tensor] = []
-    if learn_object:
-        object = object.clone().detach().requires_grad_(True)
-        learned_tensors.append(object)
+    learned_tensors: list[dict[str, torch.Tensor | float]] = []
+    object = object.clone().detach().requires_grad_(True)
+    learned_tensors.append({'params': object, 'lr': 0.1})
+
     if learn_pupil:
         pupil = pupil.clone().detach().requires_grad_(True)
-        learned_tensors.append(pupil)
+        learned_tensors.append({'params': pupil, 'lr': 0.1})
     if learn_k_vectors:
         kx_batch = kx_batch.clone().detach().requires_grad_(True)
         ky_batch = ky_batch.clone().detach().requires_grad_(True)
-        learned_tensors.append(kx_batch)
-        learned_tensors.append(ky_batch)
+        learned_tensors.append({'params': kx_batch, 'lr': 0.1})
+        learned_tensors.append({'params': ky_batch, 'lr': 0.1})
 
     # Initialize the optimizer
-    optimizer = torch.optim.AdamW(learned_tensors, lr=0.1)
+    optimizer = torch.optim.AdamW(learned_tensors)
 
     # Add scheduler
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+    """scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer,
         T_max=epochs,  # total epochs
         eta_min=0.01  # minimum LR
+    )"""
+
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        optimizer,
+        max_lr=0.05,
+        total_steps=epochs,
+        pct_start=0.3,
+        anneal_strategy='cos',
+        final_div_factor=1e4,
     )
 
     # Telemetry
