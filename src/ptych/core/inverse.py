@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 from jaxtyping import Float, Complex
 
-from ptych.forward import forward_model
+from ptych.core.forward import forward_model
 
 def solve_inverse(
     captures: Float[torch.Tensor, "B n n"], # [B, n, n] float on (0, 1)
