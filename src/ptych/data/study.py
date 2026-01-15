@@ -84,21 +84,18 @@ class PtychStudy:
         # Stack into tensor [B, n, n]
         captures_tensor = torch.from_numpy(np.stack(images, axis=0)).float()
 
-        # Extract LED positions (using first LED position from each capture)
-        led_positions = np.array([
-            [cap.led_positions[0].x, cap.led_positions[0].y, cap.led_positions[0].z]
+        # Compute k-vectors (using first LED position from each capture)
+        k_vectors = [
+            compute_k_camera(
+                cap.led_positions[0],
+                wavelength,
+                manifest.sensor_pixel_size,
+                manifest.magnification,
+            )
             for cap in valid_captures
-        ])
-
-        # Compute k-vectors
-        kx, ky = compute_k_camera(
-            led_positions,
-            wavelength,
-            manifest.sensor_pixel_size,
-            manifest.magnification,
-        )
-        kx_batch = torch.from_numpy(kx).float()
-        ky_batch = torch.from_numpy(ky).float()
+        ]
+        kx_batch = torch.tensor([kx for kx, _ in k_vectors])
+        ky_batch = torch.tensor([ky for _, ky in k_vectors])
 
         return cls(
             manifest=manifest,

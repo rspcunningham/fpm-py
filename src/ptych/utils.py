@@ -1,39 +1,39 @@
+import math
 import torch
-import numpy as np
 
-def get_default_device():
-   if torch.cuda.is_available():
-       return torch.device("cuda")
-   if torch.backends.mps.is_available() and torch.backends.mps.is_built():
-       return torch.device("mps")
-   return torch.device("cpu")
+from ptych.data.types import LedPosition
+
+def get_default_device() -> torch.device:
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if torch.backends.mps.is_available() and torch.backends.mps.is_built():
+        return torch.device("mps")
+    return torch.device("cpu")
 
 def compute_k_camera(
-    led_positions: np.ndarray,
+    led_position: LedPosition,
     wavelength: float,
     camera_pixel_size: float,
-    magnification: float
-) -> tuple[np.ndarray, np.ndarray]:
+    magnification: float,
+) -> tuple[float, float]:
     """
-    Compute k-vectors normalized to camera Nyquist.
+    Compute k-vector normalized to camera Nyquist for a single LED position.
 
     Args:
-        led_positions: (B, 3) array of (x, y, z) in meters
+        led_position: LED position (x, y, z) in meters
         wavelength: in meters
         camera_pixel_size: sensor pixel pitch in meters
         magnification: objective magnification
 
     Returns:
-        kx_camera, ky_camera: normalized to camera grid, dimensionless
+        (kx_camera, ky_camera): normalized to camera grid, dimensionless
     """
-    x, y, z = led_positions[:, 0], led_positions[:, 1], led_positions[:, 2]
-
-    theta_x = np.arctan2(x, z)
-    theta_y = np.arctan2(y, z)
+    theta_x = math.atan2(led_position.x, led_position.z)
+    theta_y = math.atan2(led_position.y, led_position.z)
 
     sample_pixel = camera_pixel_size / magnification
 
-    kx_camera = np.sin(theta_x) * sample_pixel / wavelength
-    ky_camera = np.sin(theta_y) * sample_pixel / wavelength
+    kx_camera = math.sin(theta_x) * sample_pixel / wavelength
+    ky_camera = math.sin(theta_y) * sample_pixel / wavelength
 
     return kx_camera, ky_camera
