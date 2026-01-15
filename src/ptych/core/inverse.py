@@ -13,7 +13,15 @@ def solve_inverse(
     ky_batch: Float[torch.Tensor, "B"], # [B] float on (-0.5, 0.5) (normalized for an n * n grid!)
     learn_pupil: bool = True,
     learn_k_vectors: bool = False,
+    torch_device: str | torch.device = "cpu",
 ) -> tuple[Complex[torch.Tensor, "N N"], Complex[torch.Tensor, "N N"], dict[str, list[float]]]:
+
+    # Move all tensors to the specified device
+    captures = captures.to(torch_device)
+    object = object.to(torch_device)
+    pupil = pupil.to(torch_device)
+    kx_batch = kx_batch.to(torch_device)
+    ky_batch = ky_batch.to(torch_device)
 
     epochs = 500
 

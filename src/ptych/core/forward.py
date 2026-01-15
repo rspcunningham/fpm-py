@@ -28,11 +28,12 @@ def forward_model(
 
     N, _ = object_tensor.shape
     dtype = object_tensor.dtype
+    device = object_tensor.device
     kx_reshaped = kx.view(-1, 1, 1)
     ky_reshaped = ky.view(-1, 1, 1)
 
     # Create coordinate grids [N, N]
-    coords = torch.arange(N, dtype=torch.float32)
+    coords = torch.arange(N, dtype=torch.float32, device=device)
     y_grid, x_grid = torch.meshgrid(coords, coords, indexing='ij')
 
     # Create phase ramps for all k-vectors at once
