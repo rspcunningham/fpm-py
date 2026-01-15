@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+import warnings
 import torch
 import numpy as np
 from jaxtyping import Float
@@ -36,9 +37,20 @@ class PtychStudy:
         with open(manifest_path) as f:
             manifest = parse_manifest(json.load(f))
 
+        # Filter out darkfield captures (empty led_positions)
+        valid_captures = []
+        for i, cap in enumerate(manifest.captures):
+            if not cap.led_positions:
+                warnings.warn(
+                    f"Capture {i} ({cap.filename}) is a darkfield image. "
+                    "Darkfield processing is not supported yet so this image will be ignored."
+                )
+            else:
+                valid_captures.append(cap)
+
         # === Temporary assertions (remove when edge cases are supported) ===
         # Assert all captures have the same wavelength
-        wavelengths = [cap.wavelength for cap in manifest.captures]
+        wavelengths = [cap.wavelength for cap in valid_captures]
         assert len(set(wavelengths)) == 1, (
             f"All captures must have the same wavelength. Found: {set(wavelengths)}"
         )
@@ -47,7 +59,7 @@ class PtychStudy:
 
         # Load capture images
         images: list[np.ndarray] = []
-        for cap in manifest.captures:
+        for cap in valid_captures:
             img_path = dir_path / cap.filename
             img = np.load(img_path)
 
@@ -73,7 +85,7 @@ class PtychStudy:
         # Extract LED positions (using first LED position from each capture)
         led_positions = np.array([
             [cap.led_positions[0].x, cap.led_positions[0].y, cap.led_positions[0].z]
-            for cap in manifest.captures
+            for cap in valid_captures
         ])
 
         # Compute k-vectors

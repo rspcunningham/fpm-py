@@ -6,7 +6,7 @@ This document describes the schema for `info.json` files, which store `StudyMani
 
 The `info.json` file is the manifest for a Fourier ptychography study. It contains metadata about the optical system, along with a list of captures—each capture representing a single image taken with specific illumination parameters.
 
-**Note:** This schema (v1.0) does not support darkfield images. Darkfield support will be added in v1.1.
+**Note:** Darkfield images (captures with no LED positions) are supported in the schema but not yet processed. When loading a study, darkfield captures are detected and skipped with a warning. Full darkfield processing will be added in a future version.
 
 ## Units
 
@@ -53,7 +53,7 @@ Each capture represents a single image acquired with specific illumination.
 |-------|------|----------|-------------|
 | `filename` | string | Yes | Path to the image file, relative to the manifest. Must be a `.npy` file (NumPy array). |
 | `wavelength` | number | Yes | Captured (ie. what the sensor measured) wavelength in **meters**. |
-| `led_positions` | array | Yes | Array of `LedPosition` objects. Typically contains one element per capture. |
+| `led_positions` | array | Yes | Array of `LedPosition` objects. Typically contains one element per capture. An empty array indicates a darkfield image (no illumination). |
 | `captured_at` | string (ISO 8601) | No | Timestamp when the image was captured. |
 | `exposure` | number | No | Exposure time in **milliseconds**. |
 
@@ -166,6 +166,13 @@ All image files must be:
                     "z": 0.07
                 }
             ]
+        },
+        {
+            "filename": "darkfield.npy",
+            "wavelength": 6.25e-7,
+            "captured_at": "2025-01-14T10:30:07",
+            "exposure": 50,
+            "led_positions": []
         }
     ]
 }
@@ -178,5 +185,5 @@ When creating `info.json` files programmatically:
 1. **study_id**: Must be a valid UUID string (e.g., generated via `uuid.uuid4()`)
 2. **created_at**: Must be ISO 8601 format without timezone (e.g., `2025-01-14T10:30:00`)
 3. **captures**: Must contain at least one capture
-4. **led_positions**: Must be an array, even when only one LED is active (which is the typical case)
+4. **led_positions**: Must be an array. Use an empty array `[]` for darkfield images (no illumination). For standard captures, typically contains one LED position
 5. **wavelength**: Common values are approximately `4.7e-7` (blue), `5.3e-7` (green), `6.25e-7` (red)
