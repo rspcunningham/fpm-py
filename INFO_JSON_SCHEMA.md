@@ -6,7 +6,7 @@ This document describes the schema for `info.json` files, which store `StudyMani
 
 The `info.json` file is the manifest for a Fourier ptychography study. It contains metadata about the optical system, along with a list of captures—each capture representing a single image taken with specific illumination parameters.
 
-**Note:** Darkfield images (captures with no LED positions) are supported in the schema but not yet processed. When loading a study, darkfield captures are detected and skipped with a warning. Full darkfield processing will be added in a future version.
+**Note:** Darkfield images (captures with no LED positions), multiplexed images (captures with multiple LEDs on simultaneously), and captures at different wavelengths are supported in the schema but not yet processed. When loading, darkfield images will be skipped with a warning; multiplexed images or multiple wavelengths in the same study will raise an error. 
 
 ## Units
 
@@ -72,6 +72,7 @@ Represents the 3D position of an LED in the illumination array.
 All image files must be:
 
 - **Format**: NumPy array files (`.npy`) containing a single-channel, 2D array
+- **Shape**: Must be square matrices (ie, N x N) with all captures of the study being the same dimension. Violating this will raise an error at load-time. This restriction will be lifted in a (imminent) future version. 
 - **Location**: Stored in a `captures/` directory relative to `info.json`
 
 ## Example
