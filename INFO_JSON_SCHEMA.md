@@ -51,7 +51,7 @@ Each capture represents a single image acquired with specific illumination.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `filename` | string | Yes | Path to the image file, relative to the manifest. Must be a `.npy` file (NumPy array). |
+| `filename` | string | Yes | Basename of the image file (e.g., `"im_0.npy"`). Files are stored in the `captures/` subdirectory. Must be a `.npy` file (NumPy array). |
 | `wavelength` | number | Yes | Captured (ie. what the sensor measured) wavelength in **meters**. |
 | `led_positions` | array | Yes | Array of `LedPosition` objects. Typically contains one element per capture. An empty array indicates a darkfield image (no illumination). |
 | `captured_at` | string (ISO 8601) | No | Timestamp when the image was captured. |
@@ -72,8 +72,9 @@ Represents the 3D position of an LED in the illumination array.
 All image files must be:
 
 - **Format**: NumPy array files (`.npy`) containing a single-channel, 2D array
+- **Location**: Stored in a `captures/` subdirectory relative to `info.json`
+- **Filename convention**: The `filename` field in each capture contains only the basename (e.g., `"im_0.npy"`), not the full path. Files are always located at `captures/<filename>`
 - **Shape**: Must be square matrices (ie, N x N) with all captures of the study being the same dimension. Violating this will raise an error at load-time. This restriction will be lifted in a (imminent) future version. 
-- **Location**: Stored in a `captures/` directory relative to `info.json`
 
 ## Example
 
@@ -91,7 +92,7 @@ All image files must be:
     },
     "captures": [
         {
-            "filename": "capture_000_R.npy",
+            "filename": "im_0_R.npy",
             "wavelength": 6.25e-7,
             "captured_at": "2025-01-14T10:30:01",
             "exposure": 10,
@@ -104,7 +105,7 @@ All image files must be:
             ]
         },
         {
-            "filename": "capture_000_G.npy",
+            "filename": "im_0_G.npy",
             "wavelength": 5.3e-7,
             "captured_at": "2025-01-14T10:30:02",
             "exposure": 8,
@@ -117,7 +118,7 @@ All image files must be:
             ]
         },
         {
-            "filename": "capture_000_B.npy",
+            "filename": "im_0_B.npy",
             "wavelength": 4.7e-7,
             "captured_at": "2025-01-14T10:30:03",
             "exposure": 12,
@@ -130,7 +131,7 @@ All image files must be:
             ]
         },
         {
-            "filename": "capture_001_R.npy",
+            "filename": "im_1_R.npy",
             "wavelength": 6.25e-7,
             "captured_at": "2025-01-14T10:30:04",
             "exposure": 10,
@@ -143,7 +144,7 @@ All image files must be:
             ]
         },
         {
-            "filename": "capture_001_G.npy",
+            "filename": "im_1_G.npy",
             "wavelength": 5.3e-7,
             "captured_at": "2025-01-14T10:30:05",
             "exposure": 8,
@@ -156,7 +157,7 @@ All image files must be:
             ]
         },
         {
-            "filename": "capture_001_B.npy",
+            "filename": "im_1_B.npy",
             "wavelength": 4.7e-7,
             "captured_at": "2025-01-14T10:30:06",
             "exposure": 12,
@@ -169,7 +170,7 @@ All image files must be:
             ]
         },
         {
-            "filename": "darkfield.npy",
+            "filename": "darkfield_0.npy",
             "wavelength": 6.25e-7,
             "captured_at": "2025-01-14T10:30:07",
             "exposure": 50,

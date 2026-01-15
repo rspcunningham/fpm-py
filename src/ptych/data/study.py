@@ -57,12 +57,18 @@ class PtychStudy:
             f"All captures must have the same wavelength. Found: {set(wavelengths)}"
         )
         wavelength = wavelengths[0]
+        # Assert all captures have exactly one LED position
+        for i, cap in enumerate(valid_captures):
+            assert len(cap.led_positions) == 1, (
+                f"Multi-LED captures are not supported yet. "
+                f"Capture {i} ({cap.filename}) has {len(cap.led_positions)} LED positions."
+            )
         # === End temporary assertions ===
 
-        # Load capture images
+        # Load capture images from captures/ subdirectory
         images: list[npt.NDArray[np.float64]] = []
         for cap in valid_captures:
-            img_path = dir_path / cap.filename
+            img_path = dir_path / "captures" / cap.filename
             img = cast(npt.NDArray[np.float64], np.load(img_path))
 
             # === Temporary assertions (remove when edge cases are supported) ===
