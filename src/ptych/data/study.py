@@ -1,11 +1,14 @@
 from pathlib import Path
 import json
 import warnings
-import torch
+from typing import cast
+
 import numpy as np
+import numpy.typing as npt
+import torch
 from jaxtyping import Float
 
-from ptych.data.types import StudyManifest
+from ptych.data.types import Capture, StudyManifest
 from ptych.data.parse import parse_manifest
 from ptych.utils import compute_k_camera
 
@@ -35,15 +38,14 @@ class PtychStudy:
         # Load and parse manifest
         manifest_path = dir_path / "info.json"
         with open(manifest_path) as f:
-            manifest = parse_manifest(json.load(f))
+            manifest = parse_manifest(cast(dict[str, object], json.load(f)))
 
         # Filter out darkfield captures (empty led_positions)
-        valid_captures = []
+        valid_captures: list[Capture] = []
         for i, cap in enumerate(manifest.captures):
             if not cap.led_positions:
                 warnings.warn(
-                    f"Capture {i} ({cap.filename}) is a darkfield image. "
-                    "Darkfield processing is not supported yet so this image will be ignored."
+                    f"Capture {i} ({cap.filename}) is a darkfield image. Darkfield processing is not supported yet so this image will be ignored."
                 )
             else:
                 valid_captures.append(cap)
@@ -58,10 +60,10 @@ class PtychStudy:
         # === End temporary assertions ===
 
         # Load capture images
-        images: list[np.ndarray] = []
+        images: list[npt.NDArray[np.float64]] = []
         for cap in valid_captures:
             img_path = dir_path / cap.filename
-            img = np.load(img_path)
+            img = cast(npt.NDArray[np.float64], np.load(img_path))
 
             # === Temporary assertions (remove when edge cases are supported) ===
             assert img.ndim == 2, (
