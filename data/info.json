@@ -1,0 +1,38 @@
+{
+  "study_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "created_at": "2025-01-14T12:00:00Z",
+  "version": "1.0",
+  "magnification": 4.0,
+  "sensor_pixel_size": 1.85e-6,
+  "captures": [
+    {
+      "filename": "im_0.npy",
+      "wavelength": 6.32e-7,
+      "led_positions": [{"x": 0.0, "y": 0.0, "z": 0.05}]
+    },
+    {
+      "filename": "im_1.npy",
+      "wavelength": 6.32e-7,
+      "led_positions": [{"x": 0.004, "y": 0.0, "z": 0.05}]
+    },
+    {
+      "filename": "im_2.npy",
+      "wavelength": 6.32e-7,
+      "led_positions": [{"x": -0.004, "y": 0.0, "z": 0.05}]
+    },
+    {
+      "filename": "im_3.npy",
+      "wavelength": 6.32e-7,
+      "led_positions": [{"x": 0.0, "y": 0.004, "z": 0.05}]
+    },
+    {
+      "filename": "im_4.npy",
+      "wavelength": 6.32e-7,
+      "led_positions": [{"x": 0.0, "y": -0.004, "z": 0.05}]
+    }
+  ],
+  "metadata": {
+    "sample": "test_target",
+    "notes": "Synthetic test data for PtychStudy validation"
+  }
+}
