@@ -38,7 +38,7 @@ Formally, this follows the left-hand rule with the Z-axis pointing from sample t
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `study_id` | string (UUID) | Yes | Unique identifier for this study. Must be a valid UUID v4 format. |
-| `created_at` | string (ISO 8601) | Yes | Timestamp when the study was created. Format: `YYYY-MM-DDTHH:MM:SS` |
+| `created_at` | string (ISO 8601) | Yes | Timestamp when the study was created. Format: `YYYY-MM-DDTHH:MM:SS` or `YYYY-MM-DDTHH:MM:SS.mmm` |
 | `magnification` | number | Yes | Objective magnification factor (e.g., `4` for 4x, `10` for 10x). |
 | `sensor_pixel_size` | number | Yes | Physical size of sensor pixels in **meters**. |
 | `captures` | array | Yes | List of `Capture` objects (see below). |
@@ -54,7 +54,7 @@ Each capture represents a single image acquired with specific illumination.
 | `filename` | string | Yes | Basename of the image file (e.g., `"im_0.npy"`). Files are stored in the `captures/` subdirectory. Must be a `.npy` file (NumPy array). |
 | `wavelength` | number | Yes | Captured (ie. what the sensor measured) wavelength in **meters**. |
 | `led_positions` | array | Yes | Array of `LedPosition` objects. Typically contains one element per capture. An empty array indicates a darkfield image (no illumination). |
-| `captured_at` | string (ISO 8601) | No | Timestamp when the image was captured. |
+| `captured_at` | string (ISO 8601) | No | Timestamp when the image was captured. Format: `YYYY-MM-DDTHH:MM:SS` or `YYYY-MM-DDTHH:MM:SS.mmm` |
 | `exposure` | number | No | Exposure time in **milliseconds**. |
 
 ### LedPosition Object
@@ -81,7 +81,7 @@ All image files must be:
 ```json
 {
     "study_id": "550e8400-e29b-41d4-a716-446655440000",
-    "created_at": "2025-01-14T10:30:00",
+    "created_at": "2025-01-14T10:30:00.000",
     "magnification": 10,
     "sensor_pixel_size": 0.00000167,
     "version": "1.0",
@@ -94,7 +94,7 @@ All image files must be:
         {
             "filename": "im_0_R.npy",
             "wavelength": 6.25e-7,
-            "captured_at": "2025-01-14T10:30:01",
+            "captured_at": "2025-01-14T10:30:01.042",
             "exposure": 10,
             "led_positions": [
                 {
@@ -107,7 +107,7 @@ All image files must be:
         {
             "filename": "im_0_G.npy",
             "wavelength": 5.3e-7,
-            "captured_at": "2025-01-14T10:30:02",
+            "captured_at": "2025-01-14T10:30:01.103",
             "exposure": 8,
             "led_positions": [
                 {
@@ -120,7 +120,7 @@ All image files must be:
         {
             "filename": "im_0_B.npy",
             "wavelength": 4.7e-7,
-            "captured_at": "2025-01-14T10:30:03",
+            "captured_at": "2025-01-14T10:30:01.178",
             "exposure": 12,
             "led_positions": [
                 {
@@ -133,7 +133,7 @@ All image files must be:
         {
             "filename": "im_1_R.npy",
             "wavelength": 6.25e-7,
-            "captured_at": "2025-01-14T10:30:04",
+            "captured_at": "2025-01-14T10:30:01.256",
             "exposure": 10,
             "led_positions": [
                 {
@@ -146,7 +146,7 @@ All image files must be:
         {
             "filename": "im_1_G.npy",
             "wavelength": 5.3e-7,
-            "captured_at": "2025-01-14T10:30:05",
+            "captured_at": "2025-01-14T10:30:01.317",
             "exposure": 8,
             "led_positions": [
                 {
@@ -159,7 +159,7 @@ All image files must be:
         {
             "filename": "im_1_B.npy",
             "wavelength": 4.7e-7,
-            "captured_at": "2025-01-14T10:30:06",
+            "captured_at": "2025-01-14T10:30:01.392",
             "exposure": 12,
             "led_positions": [
                 {
@@ -172,7 +172,7 @@ All image files must be:
         {
             "filename": "darkfield_0.npy",
             "wavelength": 6.25e-7,
-            "captured_at": "2025-01-14T10:30:07",
+            "captured_at": "2025-01-14T10:30:01.503",
             "exposure": 50,
             "led_positions": []
         }
@@ -185,7 +185,7 @@ All image files must be:
 When creating `info.json` files programmatically:
 
 1. **study_id**: Must be a valid UUID string (e.g., generated via `uuid.uuid4()`)
-2. **created_at**: Must be ISO 8601 format without timezone (e.g., `2025-01-14T10:30:00`)
+2. **created_at**: Must be ISO 8601 format without timezone (e.g., `2025-01-14T10:30:00` or `2025-01-14T10:30:00.123` for millisecond precision)
 3. **captures**: Must contain at least one capture
 4. **led_positions**: Must be an array. Use an empty array `[]` for darkfield images (no illumination). For standard captures, typically contains one LED position
 5. **wavelength**: Common values are approximately `4.7e-7` (blue), `5.3e-7` (green), `6.25e-7` (red)
