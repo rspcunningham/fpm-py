@@ -9,14 +9,17 @@ from ptych.data.synthetic import generate_synthetic_study
 BASE_DIR = "demo"
 
 def create_circular_mask(size: int, radius_fraction: float) -> np.ndarray:
-    """Create a circular mask centered in the array."""
+    """Create a circular mask centered at [0,0] in FFT space."""
     y, x = np.ogrid[:size, :size]
-    center = size // 2
+    # In FFT convention, center is at [0,0] with wraparound
+    y_dist = np.minimum(y, size - y)
+    x_dist = np.minimum(x, size - x)
     radius = size * radius_fraction / 2
-    mask = ((x - center) ** 2 + (y - center) ** 2) <= radius**2
+    mask = (x_dist**2 + y_dist**2) <= radius**2
     return mask
 
-# Load bars.png and convert to grayscale float [0, 1]
+
+# Load gold.png and convert to grayscale float [0, 1]
 img = Image.open(f"{BASE_DIR}/gold.png").convert("L")
 amplitude = np.array(img, dtype=np.float32) / 255.0
 
@@ -29,7 +32,7 @@ object_tensor = torch.from_numpy(amplitude * np.exp(1j * phase)).to(torch.comple
 N = object_tensor.shape[0]
 
 # Base: 0.5 amplitude, 0 phase everywhere
-pupil_amplitude = np.full((N, N), 0.5, dtype=np.float32)
+pupil_amplitude = np.zeros((N, N), dtype=np.float32)
 pupil_phase = np.zeros((N, N), dtype=np.float32)
 
 # Central circle: 10% of tensor width, full amplitude (1.0)
