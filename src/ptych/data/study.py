@@ -10,7 +10,7 @@ from jaxtyping import Float
 
 from ptych.data.types import Capture, StudyManifest
 from ptych.data.parse import parse_manifest
-from ptych.utils import compute_k_camera
+from ptych.data.utils import compute_k_camera
 
 
 class PtychStudy:

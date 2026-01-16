@@ -9,7 +9,7 @@ from jaxtyping import Complex
 
 from ptych.core.synthetic import synthesize_captures
 from ptych.data.parse import parse_manifest
-from ptych.utils import compute_k_camera
+from ptych.data.utils import compute_k_camera
 
 def generate_synthetic_study(
     dir_path: str | Path,
