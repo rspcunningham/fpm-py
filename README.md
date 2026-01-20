@@ -29,6 +29,14 @@ Fourier Ptychographic Microscopy (FPM) reconstructs high-resolution images from 
    ```
    Converts the `.npy` capture files to PNGs for inspection. Useful for verifying that off-axis illuminations produce shifted/tilted versions of the scene.
 
+## Data Format
+
+The `demo/` directory follows the Cunningham Lab FPM data format. Each study consists of:
+- `info.json` — manifest with optical parameters and LED positions
+- `captures/` — directory of `.npy` intensity images
+
+See [INFO_JSON_SCHEMA.md](INFO_JSON_SCHEMA.md) for the full schema specification.
+
 ## Requirements
 
 Requires [uv](https://github.com/astral-sh/uv). Install with:
