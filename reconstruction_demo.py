@@ -8,16 +8,9 @@ BASE_DIR = "./demo"
 
 study = PtychStudy.from_disk(BASE_DIR)
 
-# load ground truth image to get necessary dims
-gold_img = Image.open(f"{BASE_DIR}/gold.png").convert("L")
-gold_amplitude = np.array(gold_img, dtype=np.float32) / 255.0
-
-# create initial object, amplitude == 0.5, phase == 0
-obj_np = np.ones_like(gold_amplitude) / 2
-object = torch.from_numpy(obj_np).to(torch.complex64)
-
-# create pupil tensor identical to object
-pupil = object.clone()
+# Initialize object and pupil (512x512, amplitude 0.5, phase 0)
+object = torch.full((512, 512), 0.5, dtype=torch.complex64)
+pupil = torch.full((512, 512), 0.5, dtype=torch.complex64)
 
 object, pupil, metrics = solve_inverse(
     study.captures,

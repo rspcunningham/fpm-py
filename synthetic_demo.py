@@ -35,8 +35,8 @@ N = object_tensor.shape[0]
 pupil_amplitude = np.zeros((N, N), dtype=np.float32)
 pupil_phase = np.zeros((N, N), dtype=np.float32)
 
-# Central circle: 10% of tensor width, full amplitude (1.0)
-circle_mask = create_circular_mask(N, 0.10)
+# Central circle: 30% of tensor width, full amplitude (1.0)
+circle_mask = create_circular_mask(N, 0.30)
 pupil_amplitude[circle_mask] = 1.0
 
 pupil_tensor = torch.from_numpy(pupil_amplitude * np.exp(1j * pupil_phase)).to(
