@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import cast
 from uuid import UUID
 
-from .types import Capture, LedPosition, StudyManifest
+from .types import Capture, CaptureDimensions, LedPosition, StudyManifest
 
 
 class ManifestParseError(Exception):
@@ -28,6 +28,16 @@ def _require_num(data: dict[str, object], key: str, context: str = "") -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ManifestParseError(f"{prefix}Expected number for '{key}', got {type(value).__name__}")
     return float(value)
+
+
+def _require_int(data: dict[str, object], key: str, context: str = "") -> int:
+    prefix = f"{context}: " if context else ""
+    if key not in data:
+        raise ManifestParseError(f"{prefix}Missing required key '{key}'")
+    value = data[key]
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ManifestParseError(f"{prefix}Expected int for '{key}', got {type(value).__name__}")
+    return value
 
 
 def _require_list(data: dict[str, object], key: str, context: str = "") -> list[object]:
@@ -105,11 +115,21 @@ def parse_manifest(data: dict[str, object]) -> StudyManifest:
             raise ManifestParseError(f"Expected dict for 'metadata', got {type(metadata_raw).__name__}")
         metadata = cast(dict[str, object], metadata_raw)
 
+    dims_raw = data.get("capture_dimensions")
+    if dims_raw is None:
+        raise ManifestParseError("Missing required key 'capture_dimensions'")
+    dims = _require_dict(dims_raw, "capture_dimensions")
+    capture_dimensions = CaptureDimensions(
+        width=_require_int(dims, "width", "capture_dimensions"),
+        height=_require_int(dims, "height", "capture_dimensions"),
+    )
+
     return StudyManifest(
         study_id=UUID(_require_str(data, "study_id")),
         created_at=datetime.fromisoformat(_require_str(data, "created_at")),
         magnification=_require_num(data, "magnification"),
         sensor_pixel_size=_require_num(data, "sensor_pixel_size"),
+        capture_dimensions=capture_dimensions,
         captures=captures,
         version=version if version else "1.0",
         metadata=metadata,

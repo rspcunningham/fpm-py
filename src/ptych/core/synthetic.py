@@ -24,6 +24,10 @@ def synthesize_captures(
     Returns:
         Synthetic captures [B, n, n] as float intensities
     """
+    # Renormalize k-vectors from n-grid to N-grid
+    kx_batch = kx_batch / downsample_ratio
+    ky_batch = ky_batch / downsample_ratio
+
     # Run forward model at full resolution
     intensities = forward_model(object_tensor, pupil_tensor, kx_batch, ky_batch)  # [B, N, N]
 

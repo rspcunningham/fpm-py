@@ -38,4 +38,4 @@ def save_captures_as_png(captures_dir: str | Path, output_dir: str | Path | None
 
 
 if __name__ == "__main__":
-    save_captures_as_png("demo/captures")
+    save_captures_as_png("tmp/test/captures")

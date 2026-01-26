@@ -1,20 +1,46 @@
 import torch
 import numpy as np
 from PIL import Image
+import seaborn as sns
+from matplotlib import pyplot as plt
 
 from ptych import solve_inverse, PtychStudy
+from ptych.core.zernike import precompute_zernike_basis, make_zernike_pupil, ZernikeParams
 
-BASE_DIR = "./demo"
+BASE_DIR = "./tmp/test"
 
 study = PtychStudy.from_disk(BASE_DIR)
 
-# Initialize object and pupil (512x512, amplitude 0.5, phase 0)
-object = torch.full((512, 512), 0.5, dtype=torch.complex64)
-pupil = torch.full((512, 512), 0.5, dtype=torch.complex64)
+eps = 1e-8
+
+# Initialize object and pupil with upsampled dimensions
+upsample_ratio = 4
+dims = study.manifest.capture_dimensions
+
+init_amp = torch.nn.functional.interpolate(
+    study.captures[0:1, :, :].unsqueeze(1),  # [B, n, n]
+    scale_factor=upsample_ratio,
+    mode='bilinear'
+).squeeze()  #
+
+init_amp = torch.sqrt(init_amp + eps)  # Convert intensity to amplitude
+init_phase = torch.zeros_like(init_amp)  # or small random noise
+
+object_tensor = init_amp * torch.exp(1j * init_phase)
+
+# Initialize pupil using Zernike basis
+N = dims.height * upsample_ratio
+basis = precompute_zernike_basis(N, num_phase_terms=3, num_amp_terms=3, rad_fraction=0.15)
+phase_coeffs = torch.zeros(basis.num_phase_terms)
+amp_coeffs = torch.zeros(basis.num_amp_terms)
+amp_coeffs[0] = 1.0  # Piston = uniform amplitude
+#pupil = make_zernike_pupil(phase_coeffs, amp_coeffs, basis, use_softplus=False)
+
+pupil = ZernikeParams(phase_coeffs, amp_coeffs, basis)
 
 object, pupil, metrics = solve_inverse(
     study.captures,
-    object,
+    object_tensor,
     pupil,
     study.kx_batch,
     study.ky_batch,
@@ -28,3 +54,29 @@ object_amplitude_u8 = np.asarray(
     object_amplitude / object_amplitude.max() * 255, dtype=np.uint8
 )
 Image.fromarray(object_amplitude_u8).save(f"{BASE_DIR}/object_result.png")
+
+# Save pupil result as PNG
+assert isinstance(pupil, ZernikeParams)
+pupil_tensor = make_zernike_pupil(pupil.phase_coeffs, pupil.amp_coeffs, pupil.basis)
+pupil_amplitude = pupil_tensor.abs().cpu().numpy()
+pupil_amplitude_u8 = np.asarray(
+    pupil_amplitude / pupil_amplitude.max() * 255, dtype=np.uint8
+)
+Image.fromarray(pupil_amplitude_u8).save(f"{BASE_DIR}/pupil_result.png")
+
+# Plot and save metrics
+sns.set_theme(style="darkgrid")
+fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 10), sharex=True)
+
+epochs = range(len(metrics['loss']))
+
+sns.lineplot(x=list(epochs), y=metrics['loss'], ax=ax1)
+ax1.set_ylabel('Loss')
+ax1.set_title('Training Metrics')
+
+sns.lineplot(x=list(epochs), y=np.log(metrics['loss']), ax=ax2)
+ax2.set_ylabel('Log Loss')
+
+plt.tight_layout()
+plt.savefig(f"{BASE_DIR}/metrics.png", dpi=150)
+plt.close()

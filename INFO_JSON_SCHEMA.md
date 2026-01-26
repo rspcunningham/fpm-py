@@ -41,6 +41,7 @@ Formally, this follows the left-hand rule with the Z-axis pointing from sample t
 | `created_at` | string (ISO 8601) | Yes | Timestamp when the study was created. Format: `YYYY-MM-DDTHH:MM:SS` or `YYYY-MM-DDTHH:MM:SS.mmm` |
 | `magnification` | number | Yes | Objective magnification factor (e.g., `4` for 4x, `10` for 10x). |
 | `sensor_pixel_size` | number | Yes | Physical size of sensor pixels in **meters**. |
+| `capture_dimensions` | object | Yes | Dimensions of all capture images in pixels. See `CaptureDimensions` below. |
 | `captures` | array | Yes | List of `Capture` objects (see below). |
 | `version` | string | No | Schema version. Defaults to `"1.0"` if omitted. |
 | `metadata` | object | No | Arbitrary user-defined metadata (key-value pairs). |
@@ -67,6 +68,15 @@ Represents the 3D position of an LED in the illumination array.
 | `y` | number | Yes | Y coordinate in **meters**. |
 | `z` | number | Yes | Z coordinate (distance to sample) in **meters**. Should always be positive. |
 
+### CaptureDimensions Object
+
+Specifies the pixel dimensions of all capture images in the study. All captures must have identical dimensions.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `width` | integer | Yes | Image width in pixels (number of columns). |
+| `height` | integer | Yes | Image height in pixels (number of rows). |
+
 ## Image Files
 
 All image files must be:
@@ -74,7 +84,7 @@ All image files must be:
 - **Format**: NumPy array files (`.npy`) containing a single-channel, 2D array
 - **Location**: Stored in a `captures/` subdirectory relative to `info.json`
 - **Filename convention**: The `filename` field in each capture contains only the basename (e.g., `"im_0.npy"`), not the full path. Files are always located at `captures/<filename>`
-- **Shape**: Must be square matrices (ie, N x N) with all captures of the study being the same dimension. Violating this will raise an error at load-time. This restriction will be lifted in a (imminent) future version. 
+- **Shape**: All captures must have identical dimensions matching the `capture_dimensions` field. Dimensions are specified as `{width, height}` where width is columns and height is rows (note: NumPy arrays store shape as `(height, width)`). 
 
 ## Example
 
@@ -84,6 +94,7 @@ All image files must be:
     "created_at": "2025-01-14T10:30:00.000",
     "magnification": 10,
     "sensor_pixel_size": 0.00000167,
+    "capture_dimensions": {"width": 2048, "height": 2048},
     "version": "1.0",
     "metadata": {
         "objective_na": 0.25,

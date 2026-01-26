@@ -32,7 +32,7 @@ class PtychStudy:
         self.ky_batch = ky_batch
 
     @classmethod
-    def from_disk(cls, dir_path: str | Path) -> 'PtychStudy':
+    def from_disk(cls, dir_path: str | Path, normalize_by_exposure: bool = False) -> 'PtychStudy':
         dir_path = Path(dir_path)
 
         # Load and parse manifest
@@ -71,24 +71,20 @@ class PtychStudy:
             img_path = dir_path / "captures" / cap.filename
             img = cast(npt.NDArray[np.float64], np.load(img_path))
 
-            # === Temporary assertions (remove when edge cases are supported) ===
+            # Validate image dimensions against manifest
             assert img.ndim == 2, (
                 f"Image must be 2D, got {img.ndim}D for {cap.filename}"
             )
-            assert img.shape[0] == img.shape[1], (
-                f"Image must be square (n x n), got {img.shape} for {cap.filename}"
+            expected_shape = (manifest.capture_dimensions.height, manifest.capture_dimensions.width)
+            assert img.shape == expected_shape, (
+                f"Image dimensions don't match manifest. "
+                f"Expected {expected_shape} (height, width), got {img.shape} for {cap.filename}"
             )
-            if images:
-                assert img.shape == images[0].shape, (
-                    f"All images must have same dimensions. "
-                    f"Expected {images[0].shape}, got {img.shape} for {cap.filename}"
-                )
-            # === End temporary assertions ===
-
             images.append(img)
 
-        # Stack into tensor [B, n, n]
+        # Stack into tensor [B, n, n] and normalize to [0, 1]
         captures_tensor = torch.from_numpy(np.stack(images, axis=0)).float()
+        # / 65535.0
 
         # Compute k-vectors (using first LED position from each capture)
         k_vectors = [

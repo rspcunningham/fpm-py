@@ -5,22 +5,10 @@ import torch
 from PIL import Image
 
 from ptych.data.synthetic import generate_synthetic_study
-
-BASE_DIR = "demo"
-
-def create_circular_mask(size: int, radius_fraction: float) -> np.ndarray:
-    """Create a circular mask centered at [0,0] in FFT space."""
-    y, x = np.ogrid[:size, :size]
-    # In FFT convention, center is at [0,0] with wraparound
-    y_dist = np.minimum(y, size - y)
-    x_dist = np.minimum(x, size - x)
-    radius = size * radius_fraction / 2
-    mask = (x_dist**2 + y_dist**2) <= radius**2
-    return mask
-
+from ptych.core.zernike import precompute_zernike_basis, make_zernike_pupil
 
 # Load gold.png and convert to grayscale float [0, 1]
-img = Image.open(f"{BASE_DIR}/gold.png").convert("L")
+img = Image.open(f"demo/gold.png").convert("L")
 amplitude = np.array(img, dtype=np.float32) / 255.0
 
 # Create object tensor: phase proportional to amplitude
@@ -28,27 +16,31 @@ amplitude = np.array(img, dtype=np.float32) / 255.0
 phase = amplitude * 2 * np.pi
 object_tensor = torch.from_numpy(amplitude * np.exp(1j * phase)).to(torch.complex64)
 
-# Create pupil tensor
+# Create pupil tensor using Zernike basis
 N = object_tensor.shape[0]
 
-# Base: 0.5 amplitude, 0 phase everywhere
-pupil_amplitude = np.zeros((N, N), dtype=np.float32)
-pupil_phase = np.zeros((N, N), dtype=np.float32)
+# Precompute Zernike basis (rad_fraction=0.15 matches current 0.30/2 radius)
+basis = precompute_zernike_basis(N, rad_fraction=0.15)
 
-# Central circle: 30% of tensor width, full amplitude (1.0)
-circle_mask = create_circular_mask(N, 0.30)
-pupil_amplitude[circle_mask] = 1.0
+# Define Zernike coefficients
+phase_coeffs = torch.zeros(basis.num_phase_terms)  # No aberrations
+amp_coeffs = torch.zeros(basis.num_amp_terms)
+amp_coeffs[0] = 1.0  # Piston = uniform amplitude
 
-pupil_tensor = torch.from_numpy(pupil_amplitude * np.exp(1j * pupil_phase)).to(
-    torch.complex64
+# Generate pupil (use_softplus=False for exact amplitude)
+pupil_tensor = make_zernike_pupil(phase_coeffs, amp_coeffs, basis, use_softplus=False)
+
+object_amplitude_u8 = np.asarray(
+    pupil_tensor.real / pupil_tensor.real.max() * 255, dtype=np.uint8
 )
+Image.fromarray(object_amplitude_u8).save(f"tmp/test/object_result.png")
 
 # Set downsample factor
 downsample_ratio = 4
 
 # Run synthetic study generation
 generate_synthetic_study(
-    dir_path=BASE_DIR,
+    dir_path="tmp/test",
     object_tensor=object_tensor,
     pupil_tensor=pupil_tensor,
     downsample_ratio=downsample_ratio,

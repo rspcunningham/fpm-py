@@ -6,6 +6,19 @@ from uuid import UUID
 
 
 @dataclass
+class CaptureDimensions:
+    """Pixel dimensions of capture images.
+
+    Attributes:
+        width: Image width in pixels (number of columns).
+        height: Image height in pixels (number of rows).
+    """
+
+    width: int
+    height: int
+
+
+@dataclass
 class LedPosition:
     """3D position of an LED in the illumination array.
 
@@ -48,6 +61,7 @@ class StudyManifest:
         created_at: Timestamp when the study was created.
         magnification: Objective magnification factor (e.g., 4.0 for 4x).
         sensor_pixel_size: Physical size of sensor pixels in meters.
+        capture_dimensions: Pixel dimensions of all capture images.
         captures: List of captured images with illumination data.
         version: Manifest schema version.
         metadata: Arbitrary user-defined metadata.
@@ -57,6 +71,7 @@ class StudyManifest:
     created_at: datetime
     magnification: float
     sensor_pixel_size: float
+    capture_dimensions: CaptureDimensions
     captures: list[Capture]
     version: str = "1.0"
     metadata: dict[str, Any] = field(default_factory=dict)  # pyright: ignore[reportExplicitAny]

@@ -18,7 +18,7 @@ def forward_model(
 
     Args:
         object_tensor (torch.Tensor): Object tensor [N, N] (0, 1)
-        pupil_tensor (torch.Tensor): Pupil tensor [N, N] -- note, this is defined in fft-native index-space ()
+        pupil_tensor (torch.Tensor): Pupil tensor [N, N] -- DC at [0, 0]
         kx (torch.Tensor): Wavevector shift(s) in x direction, normalized. Tensor [B] (-0.5, 0.5)
         ky (torch.Tensor): Wavevector shift(s) in y direction, normalized. Tensor [B] (-0.5, 0.5)
 
