@@ -32,7 +32,7 @@ class PtychStudy:
         self.ky_batch = ky_batch
 
     @classmethod
-    def from_disk(cls, dir_path: str | Path, normalize_by_exposure: bool = False) -> 'PtychStudy':
+    def from_disk(cls, dir_path: str | Path, _normalize_by_exposure: bool = False) -> 'PtychStudy':
         dir_path = Path(dir_path)
 
         # Load and parse manifest

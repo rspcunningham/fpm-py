@@ -171,8 +171,8 @@ def compute_radial_coefficients(n: int, m_abs: int) -> tuple[list[float], list[i
         coeffs: list of coefficients
         powers: list of corresponding powers (n - 2*k for each k)
     """
-    coeffs = []
-    powers = []
+    coeffs: list[float] = []
+    powers: list[int] = []
     for k in range((n - m_abs) // 2 + 1):
         num = math.factorial(n - k)
         den = (
@@ -305,7 +305,7 @@ def make_zernike_pupil(
 
     # Evaluate phase Zernike terms and sum with coefficients
     num_phase = len(phase_coeffs)
-    phase_terms = []
+    phase_terms: list[Tensor] = []
     for j in range(num_phase):
         z = evaluate_zernike_term(
             rho_norm,
@@ -319,7 +319,7 @@ def make_zernike_pupil(
 
     # Evaluate amplitude Zernike terms and sum with coefficients
     num_amp = len(amp_coeffs)
-    amp_terms = []
+    amp_terms: list[Tensor] = []
     for j in range(num_amp):
         z = evaluate_zernike_term(
             rho_norm,
@@ -384,40 +384,3 @@ def init_rad_fraction(
     return rad
 
 
-# Quick test
-if __name__ == "__main__":
-    print("=== Functional Zernike Test (Learnable Radius) ===\n")
-
-    size = 100
-
-    # Precompute basis (no rad_fraction needed - it's now runtime)
-    basis = precompute_zernike_basis(size)
-    print(f"Basis: angular_parts={basis.angular_parts.shape}")
-    print(f"       poly_coeffs has {len(basis.poly_coeffs)} terms\n")
-
-    # Create learnable coefficients and radius
-    phase_coeffs = init_phase_coeffs(basis.num_phase_terms)
-    amp_coeffs = init_amp_coeffs(basis.num_amp_terms)
-    rad_fraction = init_rad_fraction(0.2, requires_grad=True)
-
-    print(f"Initial rad_fraction: {rad_fraction.item():.4f}")
-    print(f"Radius: {rad_fraction.item() * size:.1f} pixels\n")
-
-    # Generate pupil
-    pupil = make_zernike_pupil(phase_coeffs, amp_coeffs, basis, rad_fraction)
-    print(f"Pupil: shape={pupil.shape}, dtype={pupil.dtype}")
-    print(f"Center |pupil[0,0]|: {pupil[0, 0].abs():.4f}")
-    print(f"Outside |pupil[30,0]|: {pupil[30, 0].abs():.6f}")
-
-    # Test gradients flow through all parameters including rad_fraction
-    loss = pupil.abs().sum()
-    loss.backward()
-
-    print(f"\nGradients:")
-    print(f"  phase_coeffs.grad: {phase_coeffs.grad is not None}")
-    print(f"  amp_coeffs.grad[:3]: {amp_coeffs.grad[:3]}")
-    print(f"  rad_fraction.grad: {rad_fraction.grad}")
-
-    # Verify rad_fraction gradient is non-zero
-    assert rad_fraction.grad is not None and rad_fraction.grad != 0, "rad_fraction should have gradient!"
-    print("\n✓ Gradients flow through rad_fraction correctly!")

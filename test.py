@@ -14,7 +14,7 @@ BASE_DIR = "./tmp/new/f36333c0-67ff-4665-95db-ec57df00a6c3"
 OUTPUT_DIR = f"{BASE_DIR}/output/test"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-study = PtychStudy.from_disk(BASE_DIR, normalize_by_exposure=True)
+study = PtychStudy.from_disk(BASE_DIR)
 
 # Apply Bayer demosaicing (interpolate green channel)
 study.captures = interpolate_green(study.captures)
