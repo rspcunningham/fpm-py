@@ -57,20 +57,28 @@ def solve_inverse(
     # Handle pupil setup (Zernike vs raw tensor)
     working_zernike: ZernikeParams | None = None
     if use_zernike:
-        # Clone/detach coefficients (basis is fixed, not cloned)
+        # Clone/detach coefficients and rad_fraction (basis is fixed, not cloned)
         phase_coeffs = pupil.phase_coeffs.clone().detach().to(torch_device)
         amp_coeffs = pupil.amp_coeffs.clone().detach().to(torch_device)
+        rad_fraction = pupil.rad_fraction.clone().detach().to(torch_device)
         basis = pupil.basis.to(torch_device)
 
         if learn_pupil:
             phase_coeffs = phase_coeffs.requires_grad_(True)
             amp_coeffs = amp_coeffs.requires_grad_(True)
+            rad_fraction = rad_fraction.requires_grad_(True)
             learned_tensors.append({'params': phase_coeffs, 'lr': 0.0001})
             learned_tensors.append({'params': amp_coeffs, 'lr': 0.0001})
+            learned_tensors.append({'params': rad_fraction, 'lr': 0.0001})
 
         # Generate initial pupil tensor
-        working_zernike = ZernikeParams(phase_coeffs, amp_coeffs, basis)
-        pupil_tensor = make_zernike_pupil(working_zernike.phase_coeffs, working_zernike.amp_coeffs, working_zernike.basis)
+        working_zernike = ZernikeParams(phase_coeffs, amp_coeffs, basis, rad_fraction)
+        pupil_tensor = make_zernike_pupil(
+            working_zernike.phase_coeffs,
+            working_zernike.amp_coeffs,
+            working_zernike.basis,
+            working_zernike.rad_fraction,
+        )
     else:
         # Raw tensor path
         pupil_tensor = pupil.clone().detach().to(torch_device)
@@ -109,7 +117,12 @@ def solve_inverse(
     for epoch in tqdm(range(epochs), desc="Solving inverse model..."):
         # Regenerate pupil from coefficients each iteration (if Zernike)
         if working_zernike is not None:
-            pupil_tensor = make_zernike_pupil(working_zernike.phase_coeffs, working_zernike.amp_coeffs, working_zernike.basis)
+            pupil_tensor = make_zernike_pupil(
+                working_zernike.phase_coeffs,
+                working_zernike.amp_coeffs,
+                working_zernike.basis,
+                working_zernike.rad_fraction,
+            )
 
         # Reconstruct complex object from amplitude and phase
         object_complex = object_amp * torch.exp(1j * object_phase)
@@ -149,7 +162,12 @@ def solve_inverse(
     if working_zernike is not None:
         return (
             object_final,
-            ZernikeParams(working_zernike.phase_coeffs.detach(), working_zernike.amp_coeffs.detach(), working_zernike.basis),
+            ZernikeParams(
+                working_zernike.phase_coeffs.detach(),
+                working_zernike.amp_coeffs.detach(),
+                working_zernike.basis,
+                working_zernike.rad_fraction.detach(),
+            ),
             metrics
         )
     else:

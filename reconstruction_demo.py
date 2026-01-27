@@ -30,13 +30,13 @@ object_tensor = init_amp * torch.exp(1j * init_phase)
 
 # Initialize pupil using Zernike basis
 N = dims.height * upsample_ratio
-basis = precompute_zernike_basis(N, num_phase_terms=3, num_amp_terms=3, rad_fraction=0.15)
+basis = precompute_zernike_basis(N, num_phase_terms=3, num_amp_terms=3)
 phase_coeffs = torch.zeros(basis.num_phase_terms)
 amp_coeffs = torch.zeros(basis.num_amp_terms)
 amp_coeffs[0] = 1.0  # Piston = uniform amplitude
-#pupil = make_zernike_pupil(phase_coeffs, amp_coeffs, basis, use_softplus=False)
+rad_fraction = torch.tensor(0.15)  # Learnable radius fraction
 
-pupil = ZernikeParams(phase_coeffs, amp_coeffs, basis)
+pupil = ZernikeParams(phase_coeffs, amp_coeffs, basis, rad_fraction)
 
 object, pupil, metrics = solve_inverse(
     study.captures,
@@ -57,7 +57,8 @@ Image.fromarray(object_amplitude_u8).save(f"{BASE_DIR}/object_result.png")
 
 # Save pupil result as PNG
 assert isinstance(pupil, ZernikeParams)
-pupil_tensor = make_zernike_pupil(pupil.phase_coeffs, pupil.amp_coeffs, pupil.basis)
+pupil_tensor = make_zernike_pupil(pupil.phase_coeffs, pupil.amp_coeffs, pupil.basis, pupil.rad_fraction)
+print(f"Learned rad_fraction: {pupil.rad_fraction.item():.6f}")
 pupil_amplitude = pupil_tensor.abs().cpu().numpy()
 pupil_amplitude_u8 = np.asarray(
     pupil_amplitude / pupil_amplitude.max() * 255, dtype=np.uint8
@@ -66,16 +67,16 @@ Image.fromarray(pupil_amplitude_u8).save(f"{BASE_DIR}/pupil_result.png")
 
 # Plot and save metrics
 sns.set_theme(style="darkgrid")
-fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 10), sharex=True)
+fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 10), sharex=True) # pyright: ignore[reportAny]
 
 epochs = range(len(metrics['loss']))
 
-sns.lineplot(x=list(epochs), y=metrics['loss'], ax=ax1)
-ax1.set_ylabel('Loss')
-ax1.set_title('Training Metrics')
+sns.lineplot(x=list(epochs), y=metrics['loss'], ax=ax1) # pyright: ignore[reportAny]
+ax1.set_ylabel('Loss') # pyright: ignore[reportAny]
+ax1.set_title('Training Metrics') # pyright: ignore[reportAny]
 
-sns.lineplot(x=list(epochs), y=np.log(metrics['loss']), ax=ax2)
-ax2.set_ylabel('Log Loss')
+sns.lineplot(x=list(epochs), y=np.log(metrics['loss']), ax=ax2) # pyright: ignore[reportAny]
+ax2.set_ylabel('Log Loss') # pyright: ignore[reportAny]
 
 plt.tight_layout()
 plt.savefig(f"{BASE_DIR}/metrics.png", dpi=150)

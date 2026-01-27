@@ -19,16 +19,17 @@ object_tensor = torch.from_numpy(amplitude * np.exp(1j * phase)).to(torch.comple
 # Create pupil tensor using Zernike basis
 N = object_tensor.shape[0]
 
-# Precompute Zernike basis (rad_fraction=0.15 matches current 0.30/2 radius)
-basis = precompute_zernike_basis(N, rad_fraction=0.15)
+# Precompute Zernike basis
+basis = precompute_zernike_basis(N)
 
 # Define Zernike coefficients
 phase_coeffs = torch.zeros(basis.num_phase_terms)  # No aberrations
 amp_coeffs = torch.zeros(basis.num_amp_terms)
 amp_coeffs[0] = 1.0  # Piston = uniform amplitude
+rad_fraction = 0.15  # rad_fraction=0.15 matches current 0.30/2 radius
 
 # Generate pupil (use_softplus=False for exact amplitude)
-pupil_tensor = make_zernike_pupil(phase_coeffs, amp_coeffs, basis, use_softplus=False)
+pupil_tensor = make_zernike_pupil(phase_coeffs, amp_coeffs, basis, rad_fraction, use_softplus=False)
 
 object_amplitude_u8 = np.asarray(
     pupil_tensor.real / pupil_tensor.real.max() * 255, dtype=np.uint8

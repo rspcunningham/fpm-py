@@ -16,7 +16,7 @@ def interpolate_green(data: Float[torch.Tensor, "B N N"]) -> Float[torch.Tensor,
     Returns:
         [B, N, N] tensor with R/B positions interpolated from green neighbors
     """
-    B, H, W = data.shape
+    _, H, W = data.shape
 
     # Create mask for R/B positions (where x+y is even)
     y_idx = torch.arange(H, device=data.device).view(-1, 1)
