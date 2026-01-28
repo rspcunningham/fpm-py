@@ -9,7 +9,7 @@ from ptych import solve_inverse, PtychStudy
 from ptych.core.zernike import precompute_zernike_basis, make_zernike_pupil, ZernikeParams
 from interpolation import interpolate_green
 
-BASE_DIR = "./tmp/new/f36333c0-67ff-4665-95db-ec57df00a6c3"
+BASE_DIR = "./tmp/new/6456b6d0-3b2a-4fef-a734-cc64d68bd4ac"
 #BASE_DIR = "./tmp/test"
 OUTPUT_DIR = f"{BASE_DIR}/output/test"
 os.makedirs(OUTPUT_DIR, exist_ok=True)

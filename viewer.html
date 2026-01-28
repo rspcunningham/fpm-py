@@ -1,0 +1,1495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NPY Viewer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0a0b;
+            --bg-secondary: #111113;
+            --bg-tertiary: #18181b;
+            --bg-elevated: #1f1f23;
+            --border-subtle: rgba(255, 255, 255, 0.06);
+            --border-medium: rgba(255, 255, 255, 0.1);
+            --text-primary: #fafafa;
+            --text-secondary: #a1a1aa;
+            --text-tertiary: #71717a;
+            --accent: #3b82f6;
+            --accent-hover: #60a5fa;
+            --accent-muted: rgba(59, 130, 246, 0.15);
+            --success: #22c55e;
+            --font-sans: 'Outfit', -apple-system, sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+            --radius-sm: 6px;
+            --radius-md: 10px;
+            --radius-lg: 14px;
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.4);
+            --shadow-md: 0 4px 12px rgba(0,0,0,0.5);
+            --shadow-lg: 0 8px 32px rgba(0,0,0,0.6);
+            --transition-fast: 120ms ease;
+            --transition-med: 200ms ease;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            height: 100%;
+            overflow: hidden;
+        }
+
+        body {
+            font-family: var(--font-sans);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-size: 14px;
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 280px;
+            min-width: 280px;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-subtle);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .sidebar::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 1px;
+            height: 100%;
+            background: linear-gradient(
+                to bottom,
+                transparent,
+                rgba(59, 130, 246, 0.2) 50%,
+                transparent
+            );
+            opacity: 0.5;
+        }
+
+        /* Drop Zone */
+        .drop-zone {
+            padding: 24px 20px;
+            border-bottom: 1px solid var(--border-subtle);
+            text-align: center;
+            transition: all var(--transition-med);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .drop-zone::before {
+            content: '';
+            position: absolute;
+            inset: 12px;
+            border: 2px dashed var(--border-medium);
+            border-radius: var(--radius-md);
+            opacity: 0;
+            transition: opacity var(--transition-med);
+            pointer-events: none;
+        }
+
+        .drop-zone.dragover::before {
+            opacity: 1;
+            border-color: var(--accent);
+        }
+
+        .drop-zone.dragover {
+            background: var(--accent-muted);
+        }
+
+        .drop-zone-icon {
+            width: 48px;
+            height: 48px;
+            margin: 0 auto 12px;
+            border-radius: var(--radius-md);
+            background: var(--bg-tertiary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-tertiary);
+            transition: all var(--transition-med);
+        }
+
+        .drop-zone.dragover .drop-zone-icon {
+            background: var(--accent-muted);
+            color: var(--accent);
+            transform: scale(1.05);
+        }
+
+        .drop-zone-icon svg {
+            width: 24px;
+            height: 24px;
+        }
+
+        .drop-zone p {
+            color: var(--text-tertiary);
+            font-size: 13px;
+            font-weight: 400;
+            margin-bottom: 16px;
+            letter-spacing: -0.01em;
+        }
+
+        #browseBtn {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            font-family: var(--font-sans);
+            font-size: 13px;
+            font-weight: 500;
+            letter-spacing: -0.01em;
+            transition: all var(--transition-fast);
+            box-shadow: var(--shadow-sm), 0 0 0 0 var(--accent-muted);
+        }
+
+        #browseBtn:hover {
+            background: var(--accent-hover);
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-md), 0 0 0 4px var(--accent-muted);
+        }
+
+        #browseBtn:active {
+            transform: translateY(0);
+        }
+
+        /* File List */
+        .file-list-header {
+            padding: 12px 16px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-tertiary);
+            border-bottom: 1px solid var(--border-subtle);
+            background: var(--bg-tertiary);
+        }
+
+        .file-list {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            scrollbar-width: thin;
+            scrollbar-color: var(--bg-elevated) transparent;
+        }
+
+        .file-list::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .file-list::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .file-list::-webkit-scrollbar-thumb {
+            background: var(--bg-elevated);
+            border-radius: 3px;
+        }
+
+        .file-list::-webkit-scrollbar-thumb:hover {
+            background: var(--border-medium);
+        }
+
+        .file-item {
+            padding: 10px 16px;
+            cursor: pointer;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            font-weight: 400;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: var(--text-secondary);
+            transition: all var(--transition-fast);
+            border-left: 2px solid transparent;
+            position: relative;
+        }
+
+        .file-item:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .file-item.selected {
+            background: var(--accent-muted);
+            color: var(--accent-hover);
+            border-left-color: var(--accent);
+        }
+
+        .file-item.selected::after {
+            content: '';
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 6px;
+            height: 6px;
+            background: var(--accent);
+            border-radius: 50%;
+            box-shadow: 0 0 8px var(--accent);
+        }
+
+        /* Main Viewer */
+        .viewer {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--bg-primary);
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Info Bar */
+        .info-bar {
+            padding: 12px 20px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-subtle);
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            min-height: 52px;
+        }
+
+        #fileInfo {
+            font-family: var(--font-mono);
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            letter-spacing: -0.02em;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            background: var(--bg-tertiary);
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border-subtle);
+        }
+
+        .control-group label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            transition: color var(--transition-fast);
+            user-select: none;
+        }
+
+        .control-group label:hover {
+            color: var(--text-primary);
+        }
+
+        /* Custom Checkbox */
+        .checkbox-wrapper {
+            position: relative;
+            width: 16px;
+            height: 16px;
+        }
+
+        .checkbox-wrapper input {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+            margin: 0;
+        }
+
+        .checkbox-custom {
+            position: absolute;
+            inset: 0;
+            background: var(--bg-primary);
+            border: 1.5px solid var(--border-medium);
+            border-radius: 4px;
+            transition: all var(--transition-fast);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .checkbox-custom svg {
+            width: 10px;
+            height: 10px;
+            opacity: 0;
+            transform: scale(0.5);
+            transition: all var(--transition-fast);
+            color: white;
+        }
+
+        .checkbox-wrapper input:checked + .checkbox-custom {
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+
+        .checkbox-wrapper input:checked + .checkbox-custom svg {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        .checkbox-wrapper input:focus-visible + .checkbox-custom {
+            box-shadow: 0 0 0 2px var(--accent-muted);
+        }
+
+        /* Select Dropdown */
+        .select-wrapper {
+            position: relative;
+        }
+
+        .select-wrapper select {
+            appearance: none;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            border: 1.5px solid var(--border-medium);
+            padding: 6px 32px 6px 12px;
+            border-radius: var(--radius-sm);
+            font-family: var(--font-sans);
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            min-width: 120px;
+        }
+
+        .select-wrapper select:hover {
+            border-color: var(--accent);
+        }
+
+        .select-wrapper select:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-muted);
+        }
+
+        .select-wrapper::after {
+            content: '';
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 0;
+            height: 0;
+            border-left: 4px solid transparent;
+            border-right: 4px solid transparent;
+            border-top: 5px solid var(--text-tertiary);
+            pointer-events: none;
+        }
+
+        /* Pixel Info */
+        .pixel-info {
+            margin-left: auto;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-tertiary);
+            padding: 6px 12px;
+            background: var(--bg-tertiary);
+            border-radius: var(--radius-sm);
+            min-width: 160px;
+            text-align: right;
+            border: 1px solid var(--border-subtle);
+            transition: all var(--transition-fast);
+        }
+
+        .pixel-info:not(:empty) {
+            color: var(--success);
+            border-color: rgba(34, 197, 94, 0.2);
+            background: rgba(34, 197, 94, 0.08);
+        }
+
+        /* Canvas Container */
+        .canvas-container {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+            background:
+                radial-gradient(circle at 50% 50%, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+        }
+
+        /* Subtle grid pattern */
+        .canvas-container::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image:
+                linear-gradient(var(--border-subtle) 1px, transparent 1px),
+                linear-gradient(90deg, var(--border-subtle) 1px, transparent 1px);
+            background-size: 40px 40px;
+            opacity: 0.3;
+            pointer-events: none;
+        }
+
+        #glCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        #overlayCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+        }
+
+        /* Empty State */
+        .empty-state {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-tertiary);
+            gap: 16px;
+            opacity: 1;
+            transition: opacity var(--transition-med);
+            pointer-events: none;
+        }
+
+        .empty-state.hidden {
+            opacity: 0;
+        }
+
+        .empty-state-icon {
+            width: 80px;
+            height: 80px;
+            border-radius: var(--radius-lg);
+            background: var(--bg-tertiary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--border-subtle);
+        }
+
+        .empty-state-icon svg {
+            width: 36px;
+            height: 36px;
+            opacity: 0.5;
+        }
+
+        .empty-state p {
+            font-size: 14px;
+            font-weight: 400;
+        }
+
+        /* Keyboard hints */
+        .keyboard-hints {
+            position: absolute;
+            bottom: 16px;
+            right: 16px;
+            display: flex;
+            gap: 8px;
+            opacity: 0.6;
+            transition: opacity var(--transition-fast);
+            pointer-events: none;
+        }
+
+        .keyboard-hints:hover {
+            opacity: 1;
+        }
+
+        .kbd {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            font-weight: 500;
+            padding: 4px 8px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-subtle);
+            border-radius: 4px;
+            color: var(--text-tertiary);
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .file-item {
+            animation: fadeIn 0.2s ease backwards;
+        }
+
+        .file-item:nth-child(1) { animation-delay: 0.02s; }
+        .file-item:nth-child(2) { animation-delay: 0.04s; }
+        .file-item:nth-child(3) { animation-delay: 0.06s; }
+        .file-item:nth-child(4) { animation-delay: 0.08s; }
+        .file-item:nth-child(5) { animation-delay: 0.10s; }
+        .file-item:nth-child(n+6) { animation-delay: 0.12s; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <div class="drop-zone" id="dropZone">
+                <div class="drop-zone-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="17 8 12 3 7 8"/>
+                        <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                </div>
+                <p>Drop a folder or .npy files</p>
+                <button id="browseBtn">Browse Files</button>
+                <input type="file" id="fileInput" multiple accept=".npy" webkitdirectory style="display: none;">
+            </div>
+            <div class="file-list-header">Files</div>
+            <div class="file-list" id="fileList"></div>
+        </div>
+        <div class="viewer">
+            <div class="info-bar" id="infoBar">
+                <span id="fileInfo">No file selected</span>
+                <div class="control-group">
+                    <label>
+                        <span class="checkbox-wrapper">
+                            <input type="checkbox" id="interpolateToggle">
+                            <span class="checkbox-custom">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="20 6 9 17 4 12"/>
+                                </svg>
+                            </span>
+                        </span>
+                        Interpolate
+                    </label>
+                </div>
+                <div class="select-wrapper" id="complexModeWrapper" style="display: none;">
+                    <select id="complexMode">
+                        <option value="amplitude">Amplitude</option>
+                        <option value="phase">Phase</option>
+                        <option value="real">Real</option>
+                        <option value="imag">Imaginary</option>
+                    </select>
+                </div>
+                <span class="pixel-info" id="pixelInfo"></span>
+            </div>
+            <div class="canvas-container" id="canvasContainer">
+                <canvas id="glCanvas"></canvas>
+                <canvas id="overlayCanvas"></canvas>
+                <div class="empty-state" id="emptyState">
+                    <div class="empty-state-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                            <circle cx="8.5" cy="8.5" r="1.5"/>
+                            <polyline points="21 15 16 10 5 21"/>
+                        </svg>
+                    </div>
+                    <p>Select a file to view</p>
+                </div>
+                <div class="keyboard-hints">
+                    <span class="kbd">↑↓ Navigate</span>
+                    <span class="kbd">0 Fit</span>
+                    <span class="kbd">R Reset</span>
+                    <span class="kbd">⇧ Drag ROI</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // ============================================
+    // GLSL Shaders
+    // ============================================
+    const vertexShaderSource = `#version 300 es
+        in vec2 a_position;
+        in vec2 a_texCoord;
+
+        uniform vec2 u_resolution;
+        uniform vec2 u_imageSize;
+        uniform vec2 u_pan;
+        uniform float u_zoom;
+
+        out vec2 v_texCoord;
+
+        void main() {
+            // Apply zoom and pan to get screen position
+            vec2 imagePos = a_position * u_imageSize;
+            vec2 screenPos = (imagePos * u_zoom + u_pan) / u_resolution * 2.0 - 1.0;
+            screenPos.y = -screenPos.y; // Flip Y for WebGL
+
+            gl_Position = vec4(screenPos, 0, 1);
+            v_texCoord = a_texCoord;
+        }
+    `;
+
+    const fragmentShaderSource = `#version 300 es
+        precision highp float;
+
+        uniform sampler2D u_image;
+        uniform sampler2D u_imaginary;  // For complex data
+        uniform float u_windowCenter;
+        uniform float u_windowWidth;
+        uniform int u_isComplex;
+        uniform int u_complexMode;  // 0=amplitude, 1=phase, 2=real, 3=imag
+        uniform int u_interpolate;
+        uniform vec2 u_imageSize;
+
+        in vec2 v_texCoord;
+        out vec4 fragColor;
+
+        float getReal(vec2 coord) {
+            return texture(u_image, coord).r;
+        }
+
+        float getImag(vec2 coord) {
+            return texture(u_imaginary, coord).r;
+        }
+
+        float interpolateValue(sampler2D tex, vec2 coord) {
+            // Convert to pixel coordinates
+            vec2 pixelCoord = coord * u_imageSize - 0.5;
+            ivec2 icoord = ivec2(floor(pixelCoord + 0.5));
+            int x = icoord.x;
+            int y = icoord.y;
+
+            // Texel size for neighbor sampling
+            vec2 texelSize = 1.0 / u_imageSize;
+
+            // Check if this is an R/B position (needs interpolation)
+            // In RGGB Bayer: green is at (x+y) odd positions
+            if ((x + y) % 2 == 0) {
+                // This is R or B position - average the 4 cardinal neighbors (green pixels)
+                float sum = 0.0;
+                float count = 0.0;
+
+                // Up
+                if (y > 0) {
+                    sum += texture(tex, vec2(coord.x, coord.y - texelSize.y)).r;
+                    count += 1.0;
+                }
+                // Down
+                if (y < int(u_imageSize.y) - 1) {
+                    sum += texture(tex, vec2(coord.x, coord.y + texelSize.y)).r;
+                    count += 1.0;
+                }
+                // Left
+                if (x > 0) {
+                    sum += texture(tex, vec2(coord.x - texelSize.x, coord.y)).r;
+                    count += 1.0;
+                }
+                // Right
+                if (x < int(u_imageSize.x) - 1) {
+                    sum += texture(tex, vec2(coord.x + texelSize.x, coord.y)).r;
+                    count += 1.0;
+                }
+
+                return count > 0.0 ? sum / count : texture(tex, coord).r;
+            }
+            return texture(tex, coord).r;
+        }
+
+        void main() {
+            float value;
+
+            if (u_isComplex == 1) {
+                float real_val, imag_val;
+
+                if (u_interpolate == 1) {
+                    real_val = interpolateValue(u_image, v_texCoord);
+                    imag_val = interpolateValue(u_imaginary, v_texCoord);
+                } else {
+                    real_val = getReal(v_texCoord);
+                    imag_val = getImag(v_texCoord);
+                }
+
+                if (u_complexMode == 0) {
+                    // Amplitude
+                    value = sqrt(real_val * real_val + imag_val * imag_val);
+                } else if (u_complexMode == 1) {
+                    // Phase
+                    value = atan(imag_val, real_val);
+                } else if (u_complexMode == 2) {
+                    // Real
+                    value = real_val;
+                } else {
+                    // Imaginary
+                    value = imag_val;
+                }
+            } else {
+                if (u_interpolate == 1) {
+                    value = interpolateValue(u_image, v_texCoord);
+                } else {
+                    value = texture(u_image, v_texCoord).r;
+                }
+            }
+
+            // Apply window/level
+            float normalized = (value - (u_windowCenter - u_windowWidth * 0.5)) / u_windowWidth;
+            normalized = clamp(normalized, 0.0, 1.0);
+
+            fragColor = vec4(normalized, normalized, normalized, 1.0);
+        }
+    `;
+
+    // ============================================
+    // WebGL Setup
+    // ============================================
+    const glCanvas = document.getElementById('glCanvas');
+    const overlayCanvas = document.getElementById('overlayCanvas');
+    const overlayCtx = overlayCanvas.getContext('2d');
+    const gl = glCanvas.getContext('webgl2');
+
+    if (!gl) {
+        alert('WebGL2 not supported');
+        throw new Error('WebGL2 not supported');
+    }
+
+    function createShader(gl, type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            console.error('Shader compile error:', gl.getShaderInfoLog(shader));
+            gl.deleteShader(shader);
+            return null;
+        }
+        return shader;
+    }
+
+    function createProgram(gl, vertexShader, fragmentShader) {
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            console.error('Program link error:', gl.getProgramInfoLog(program));
+            gl.deleteProgram(program);
+            return null;
+        }
+        return program;
+    }
+
+    const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+    const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+    const program = createProgram(gl, vertexShader, fragmentShader);
+
+    // Get locations
+    const locations = {
+        a_position: gl.getAttribLocation(program, 'a_position'),
+        a_texCoord: gl.getAttribLocation(program, 'a_texCoord'),
+        u_resolution: gl.getUniformLocation(program, 'u_resolution'),
+        u_imageSize: gl.getUniformLocation(program, 'u_imageSize'),
+        u_pan: gl.getUniformLocation(program, 'u_pan'),
+        u_zoom: gl.getUniformLocation(program, 'u_zoom'),
+        u_image: gl.getUniformLocation(program, 'u_image'),
+        u_imaginary: gl.getUniformLocation(program, 'u_imaginary'),
+        u_windowCenter: gl.getUniformLocation(program, 'u_windowCenter'),
+        u_windowWidth: gl.getUniformLocation(program, 'u_windowWidth'),
+        u_isComplex: gl.getUniformLocation(program, 'u_isComplex'),
+        u_complexMode: gl.getUniformLocation(program, 'u_complexMode'),
+        u_interpolate: gl.getUniformLocation(program, 'u_interpolate'),
+    };
+
+    // Create buffers
+    const positionBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+        0, 0,  1, 0,  0, 1,
+        0, 1,  1, 0,  1, 1,
+    ]), gl.STATIC_DRAW);
+
+    const texCoordBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+        0, 0,  1, 0,  0, 1,
+        0, 1,  1, 0,  1, 1,
+    ]), gl.STATIC_DRAW);
+
+    // Create VAO
+    const vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    gl.enableVertexAttribArray(locations.a_position);
+    gl.vertexAttribPointer(locations.a_position, 2, gl.FLOAT, false, 0, 0);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+    gl.enableVertexAttribArray(locations.a_texCoord);
+    gl.vertexAttribPointer(locations.a_texCoord, 2, gl.FLOAT, false, 0, 0);
+
+    // Create textures
+    let imageTexture = null;
+    let imaginaryTexture = null;
+
+    function createFloatTexture(gl, width, height, data) {
+        const texture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, width, height, 0, gl.RED, gl.FLOAT, data);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        return texture;
+    }
+
+    // ============================================
+    // Application State
+    // ============================================
+    const dropZone = document.getElementById('dropZone');
+    const fileList = document.getElementById('fileList');
+    const fileInfo = document.getElementById('fileInfo');
+    const pixelInfo = document.getElementById('pixelInfo');
+    const canvasContainer = document.getElementById('canvasContainer');
+    const browseBtn = document.getElementById('browseBtn');
+    const fileInput = document.getElementById('fileInput');
+    const interpolateToggle = document.getElementById('interpolateToggle');
+    const complexMode = document.getElementById('complexMode');
+    const complexModeWrapper = document.getElementById('complexModeWrapper');
+    const emptyState = document.getElementById('emptyState');
+
+    let files = [];
+    let currentRawData = null;      // Float32Array for display (after complex mode extraction if needed)
+    let currentComplexData = null;  // {real, imag} if complex
+    let currentShape = null;
+    let currentDtype = null;
+    let isComplex = false;
+
+    // View state
+    let zoom = 1;
+    let panX = 0;
+    let panY = 0;
+
+    // Window/Level state
+    let windowCenter = 0.5;
+    let windowWidth = 1.0;
+    let dataMin = 0;
+    let dataMax = 1;
+
+    // Interaction state
+    let isDragging = false;
+    let isDrawingROI = false;
+    let lastMouseX, lastMouseY;
+    let roiStart = null;
+    let roiEnd = null;
+
+    // Per-file state storage
+    let currentFileIndex = -1;
+    const fileState = new Map();  // index -> {windowCenter, windowWidth}
+
+    function clearState() {
+        files = [];
+        fileState.clear();
+        currentFileIndex = -1;
+        currentRawData = null;
+        currentComplexData = null;
+        currentShape = null;
+        currentDtype = null;
+        isComplex = false;
+        if (imageTexture) { gl.deleteTexture(imageTexture); imageTexture = null; }
+        if (imaginaryTexture) { gl.deleteTexture(imaginaryTexture); imaginaryTexture = null; }
+        emptyState.classList.remove('hidden');
+    }
+
+    // ============================================
+    // Event Handlers
+    // ============================================
+    interpolateToggle.addEventListener('change', render);
+    complexMode.addEventListener('change', () => {
+        if (isComplex) {
+            updateDataRange();
+            resetWindowLevel();
+            render();
+        }
+    });
+
+    browseBtn.addEventListener('click', () => fileInput.click());
+
+    fileInput.addEventListener('change', (e) => {
+        clearState();
+        for (const file of e.target.files) {
+            if (file.name.endsWith('.npy')) {
+                const path = file.webkitRelativePath || file.name;
+                files.push({ name: path, file });
+            }
+        }
+        files.sort((a, b) => a.name.localeCompare(b.name, undefined, {numeric: true}));
+        renderFileList();
+        // Reset input so same folder can be re-selected
+        fileInput.value = '';
+    });
+
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('dragover');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('dragover');
+    });
+
+    dropZone.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        clearState();
+        const items = e.dataTransfer.items;
+        for (const item of items) {
+            if (item.kind === 'file') {
+                const entry = item.webkitGetAsEntry();
+                if (entry) await traverseEntry(entry);
+            }
+        }
+        files.sort((a, b) => a.name.localeCompare(b.name, undefined, {numeric: true}));
+        renderFileList();
+    });
+
+    async function traverseEntry(entry, path = '') {
+        if (entry.isFile) {
+            if (entry.name.endsWith('.npy')) {
+                const file = await new Promise((resolve, reject) => {
+                    entry.file(resolve, reject);
+                });
+                files.push({ name: path + entry.name, file });
+            }
+        } else if (entry.isDirectory) {
+            const reader = entry.createReader();
+            // readEntries may not return all entries at once, need to call repeatedly
+            let allEntries = [];
+            const readBatch = () => new Promise((resolve, reject) => {
+                reader.readEntries(resolve, reject);
+            });
+            let batch;
+            do {
+                batch = await readBatch();
+                allEntries = allEntries.concat(batch);
+            } while (batch.length > 0);
+
+            for (const e of allEntries) {
+                await traverseEntry(e, path + entry.name + '/');
+            }
+        }
+    }
+
+    function renderFileList() {
+        fileList.innerHTML = '';
+        files.forEach((f, i) => {
+            const div = document.createElement('div');
+            div.className = 'file-item';
+            div.textContent = f.name;
+            div.onclick = () => selectFile(i);
+            fileList.appendChild(div);
+        });
+    }
+
+    async function selectFile(index) {
+        // Save current file's window/level before switching
+        if (currentFileIndex >= 0) {
+            fileState.set(currentFileIndex, { windowCenter, windowWidth });
+        }
+
+        document.querySelectorAll('.file-item').forEach((el, i) => {
+            el.classList.toggle('selected', i === index);
+        });
+
+        currentFileIndex = index;
+        const { name, file } = files[index];
+        const arrayBuffer = await file.arrayBuffer();
+        const result = parseNpy(arrayBuffer);
+
+        if (result.error) {
+            fileInfo.textContent = `Error: ${result.error}`;
+            return;
+        }
+
+        const { data, shape, dtype } = result;
+        currentShape = shape;
+        currentDtype = dtype;
+        isComplex = dtype === 'complex64' || dtype === 'complex128';
+
+        complexModeWrapper.style.display = isComplex ? 'block' : 'none';
+
+        if (isComplex) {
+            currentComplexData = data;
+            currentRawData = null;
+        } else {
+            currentComplexData = null;
+            currentRawData = toFloat32(data);
+        }
+
+        uploadTextures();
+        updateDataRange();
+
+        // Restore saved window/level or reset to defaults
+        const savedState = fileState.get(index);
+        if (savedState) {
+            windowCenter = savedState.windowCenter;
+            windowWidth = savedState.windowWidth;
+        } else {
+            resetWindowLevel();
+        }
+
+        fileInfo.textContent = `${name}  •  ${shape[1]}×${shape[0]}  •  ${dtype}`;
+
+        zoom = 1;
+        panX = 0;
+        panY = 0;
+        fitToView();
+        emptyState.classList.add('hidden');
+        render();
+    }
+
+    function toFloat32(data) {
+        if (data instanceof Float32Array) return data;
+        const result = new Float32Array(data.length);
+        for (let i = 0; i < data.length; i++) {
+            result[i] = Number(data[i]);
+        }
+        return result;
+    }
+
+    function uploadTextures() {
+        const [height, width] = currentShape;
+
+        if (imageTexture) gl.deleteTexture(imageTexture);
+        if (imaginaryTexture) gl.deleteTexture(imaginaryTexture);
+
+        if (isComplex) {
+            imageTexture = createFloatTexture(gl, width, height, currentComplexData.real);
+            imaginaryTexture = createFloatTexture(gl, width, height, currentComplexData.imag);
+        } else {
+            imageTexture = createFloatTexture(gl, width, height, currentRawData);
+            imaginaryTexture = createFloatTexture(gl, width, height, new Float32Array(width * height));
+        }
+    }
+
+    function updateDataRange() {
+        // Compute min/max for the current display mode
+        let data;
+        if (isComplex) {
+            const mode = complexMode.value;
+            const real = currentComplexData.real;
+            const imag = currentComplexData.imag;
+            const len = real.length;
+            data = new Float32Array(len);
+
+            if (mode === 'amplitude') {
+                for (let i = 0; i < len; i++) {
+                    data[i] = Math.sqrt(real[i] * real[i] + imag[i] * imag[i]);
+                }
+            } else if (mode === 'phase') {
+                for (let i = 0; i < len; i++) {
+                    data[i] = Math.atan2(imag[i], real[i]);
+                }
+            } else if (mode === 'real') {
+                data = real;
+            } else {
+                data = imag;
+            }
+        } else {
+            data = currentRawData;
+        }
+
+        let min = Infinity, max = -Infinity;
+        for (let i = 0; i < data.length; i++) {
+            if (data[i] < min) min = data[i];
+            if (data[i] > max) max = data[i];
+        }
+        dataMin = min;
+        dataMax = max;
+    }
+
+    function resetWindowLevel() {
+        windowCenter = (dataMin + dataMax) / 2;
+        windowWidth = dataMax - dataMin || 1;
+    }
+
+    function fitToView() {
+        if (!currentShape) return;
+        const [height, width] = currentShape;
+        const containerWidth = canvasContainer.clientWidth;
+        const containerHeight = canvasContainer.clientHeight;
+        const scaleX = containerWidth / width;
+        const scaleY = containerHeight / height;
+        zoom = Math.min(scaleX, scaleY, 1);
+        panX = (containerWidth - width * zoom) / 2;
+        panY = (containerHeight - height * zoom) / 2;
+    }
+
+    function render() {
+        if (!currentShape) return;
+
+        const containerWidth = canvasContainer.clientWidth;
+        const containerHeight = canvasContainer.clientHeight;
+        const [height, width] = currentShape;
+
+        // Resize canvases
+        glCanvas.width = containerWidth;
+        glCanvas.height = containerHeight;
+        overlayCanvas.width = containerWidth;
+        overlayCanvas.height = containerHeight;
+
+        // Clear overlay
+        overlayCtx.clearRect(0, 0, containerWidth, containerHeight);
+
+        // WebGL render
+        gl.viewport(0, 0, containerWidth, containerHeight);
+        gl.clearColor(0.039, 0.039, 0.043, 1);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        gl.useProgram(program);
+        gl.bindVertexArray(vao);
+
+        // Set uniforms
+        gl.uniform2f(locations.u_resolution, containerWidth, containerHeight);
+        gl.uniform2f(locations.u_imageSize, width, height);
+        gl.uniform2f(locations.u_pan, panX, panY);
+        gl.uniform1f(locations.u_zoom, zoom);
+        gl.uniform1f(locations.u_windowCenter, windowCenter);
+        gl.uniform1f(locations.u_windowWidth, windowWidth);
+        gl.uniform1i(locations.u_isComplex, isComplex ? 1 : 0);
+        gl.uniform1i(locations.u_complexMode, ['amplitude', 'phase', 'real', 'imag'].indexOf(complexMode.value));
+        gl.uniform1i(locations.u_interpolate, interpolateToggle.checked ? 1 : 0);
+
+        // Bind textures
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, imageTexture);
+        gl.uniform1i(locations.u_image, 0);
+
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, imaginaryTexture);
+        gl.uniform1i(locations.u_imaginary, 1);
+
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+        // Draw ROI rectangle if active
+        if (roiStart && roiEnd) {
+            overlayCtx.strokeStyle = '#3b82f6';
+            overlayCtx.lineWidth = 2;
+            overlayCtx.setLineDash([6, 4]);
+            const x = Math.min(roiStart.x, roiEnd.x);
+            const y = Math.min(roiStart.y, roiEnd.y);
+            const w = Math.abs(roiEnd.x - roiStart.x);
+            const h = Math.abs(roiEnd.y - roiStart.y);
+            overlayCtx.strokeRect(x, y, w, h);
+
+            // Add fill
+            overlayCtx.fillStyle = 'rgba(59, 130, 246, 0.1)';
+            overlayCtx.fillRect(x, y, w, h);
+        }
+    }
+
+    // ============================================
+    // Mouse Interaction
+    // ============================================
+    canvasContainer.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        if (!currentShape) return;
+
+        const rect = canvasContainer.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        const oldZoom = zoom;
+        const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+        zoom = Math.max(0.1, Math.min(50, zoom * zoomFactor));
+
+        panX = mouseX - (mouseX - panX) * (zoom / oldZoom);
+        panY = mouseY - (mouseY - panY) * (zoom / oldZoom);
+
+        render();
+    });
+
+    canvasContainer.addEventListener('mousedown', (e) => {
+        if (e.shiftKey) {
+            // Start ROI drawing
+            isDrawingROI = true;
+            const rect = canvasContainer.getBoundingClientRect();
+            roiStart = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+            roiEnd = { ...roiStart };
+        } else {
+            // Start panning
+            isDragging = true;
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+            canvasContainer.style.cursor = 'grabbing';
+        }
+    });
+
+    window.addEventListener('mousemove', (e) => {
+        const rect = canvasContainer.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        // Update pixel info
+        if (currentShape && mouseX >= 0 && mouseY >= 0 && mouseX < rect.width && mouseY < rect.height) {
+            const imgX = Math.floor((mouseX - panX) / zoom);
+            const imgY = Math.floor((mouseY - panY) / zoom);
+            const [height, width] = currentShape;
+
+            if (imgX >= 0 && imgX < width && imgY >= 0 && imgY < height) {
+                const idx = imgY * width + imgX;
+                let value;
+
+                if (isComplex) {
+                    const real = currentComplexData.real[idx];
+                    const imag = currentComplexData.imag[idx];
+                    const mode = complexMode.value;
+                    if (mode === 'amplitude') value = Math.sqrt(real * real + imag * imag);
+                    else if (mode === 'phase') value = Math.atan2(imag, real);
+                    else if (mode === 'real') value = real;
+                    else value = imag;
+                } else {
+                    value = currentRawData[idx];
+                }
+
+                pixelInfo.textContent = `[${imgX}, ${imgY}]  ${value.toFixed(4)}`;
+            } else {
+                pixelInfo.textContent = '';
+            }
+        }
+
+        if (isDragging) {
+            panX += e.clientX - lastMouseX;
+            panY += e.clientY - lastMouseY;
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+            render();
+        } else if (isDrawingROI) {
+            roiEnd = { x: mouseX, y: mouseY };
+            render();
+        }
+    });
+
+    window.addEventListener('mouseup', (e) => {
+        if (isDrawingROI && roiStart && roiEnd) {
+            // Apply window/level from ROI
+            applyROIWindowLevel();
+            roiStart = null;
+            roiEnd = null;
+            isDrawingROI = false;
+            render();
+        }
+
+        isDragging = false;
+        canvasContainer.style.cursor = 'default';
+    });
+
+    function applyROIWindowLevel() {
+        if (!currentShape || !roiStart || !roiEnd) return;
+
+        const [height, width] = currentShape;
+
+        // Convert screen coords to image coords
+        const x1 = Math.floor((Math.min(roiStart.x, roiEnd.x) - panX) / zoom);
+        const y1 = Math.floor((Math.min(roiStart.y, roiEnd.y) - panY) / zoom);
+        const x2 = Math.ceil((Math.max(roiStart.x, roiEnd.x) - panX) / zoom);
+        const y2 = Math.ceil((Math.max(roiStart.y, roiEnd.y) - panY) / zoom);
+
+        // Clamp to image bounds
+        const minX = Math.max(0, x1);
+        const minY = Math.max(0, y1);
+        const maxX = Math.min(width, x2);
+        const maxY = Math.min(height, y2);
+
+        if (maxX <= minX || maxY <= minY) return;
+
+        // Collect values in ROI
+        let roiMin = Infinity, roiMax = -Infinity;
+
+        for (let y = minY; y < maxY; y++) {
+            for (let x = minX; x < maxX; x++) {
+                const idx = y * width + x;
+                let value;
+
+                if (isComplex) {
+                    const real = currentComplexData.real[idx];
+                    const imag = currentComplexData.imag[idx];
+                    const mode = complexMode.value;
+                    if (mode === 'amplitude') value = Math.sqrt(real * real + imag * imag);
+                    else if (mode === 'phase') value = Math.atan2(imag, real);
+                    else if (mode === 'real') value = real;
+                    else value = imag;
+                } else {
+                    value = currentRawData[idx];
+                }
+
+                if (value < roiMin) roiMin = value;
+                if (value > roiMax) roiMax = value;
+            }
+        }
+
+        if (roiMin < roiMax) {
+            windowCenter = (roiMin + roiMax) / 2;
+            windowWidth = roiMax - roiMin;
+        }
+    }
+
+    // ============================================
+    // Keyboard Shortcuts
+    // ============================================
+    document.addEventListener('keydown', (e) => {
+        const selectedIndex = [...document.querySelectorAll('.file-item')].findIndex(el => el.classList.contains('selected'));
+
+        if (e.key === 'ArrowDown' && selectedIndex < files.length - 1) {
+            selectFile(selectedIndex + 1);
+            document.querySelectorAll('.file-item')[selectedIndex + 1].scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'ArrowUp' && selectedIndex > 0) {
+            selectFile(selectedIndex - 1);
+            document.querySelectorAll('.file-item')[selectedIndex - 1].scrollIntoView({ block: 'nearest' });
+        } else if (e.key === '0' || e.key === 'Home') {
+            fitToView();
+            render();
+        } else if (e.key === 'r' || e.key === 'R') {
+            // Reset window/level
+            resetWindowLevel();
+            render();
+        }
+    });
+
+    // Handle window resize
+    window.addEventListener('resize', render);
+
+    // ============================================
+    // NPY Parser
+    // ============================================
+    function parseNpy(buffer) {
+        const view = new DataView(buffer);
+        const magic = new Uint8Array(buffer, 0, 6);
+
+        if (magic[0] !== 0x93 || String.fromCharCode(...magic.slice(1, 6)) !== 'NUMPY') {
+            return { error: 'Not a valid NPY file' };
+        }
+
+        const majorVersion = view.getUint8(6);
+        let headerLen, headerOffset;
+
+        if (majorVersion === 1) {
+            headerLen = view.getUint16(8, true);
+            headerOffset = 10;
+        } else {
+            headerLen = view.getUint32(8, true);
+            headerOffset = 12;
+        }
+
+        const headerBytes = new Uint8Array(buffer, headerOffset, headerLen);
+        const header = new TextDecoder().decode(headerBytes);
+
+        const descrMatch = header.match(/'descr':\s*'([^']+)'/);
+        const shapeMatch = header.match(/'shape':\s*\(([^)]+)\)/);
+
+        if (!descrMatch || !shapeMatch) {
+            return { error: 'Could not parse NPY header' };
+        }
+
+        const descr = descrMatch[1];
+        const littleEndian = descr[0] === '<' || descr[0] === '|';
+        const dtypeChar = descr.slice(1);
+
+        const shapeStr = shapeMatch[1].trim();
+        const shape = shapeStr ? shapeStr.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n)) : [1];
+
+        if (shape.length !== 2) {
+            return { error: `Expected 2D array, got ${shape.length}D` };
+        }
+
+        const dataOffset = headerOffset + headerLen;
+        const dataBuffer = buffer.slice(dataOffset);
+
+        let data, dtype;
+
+        if (dtypeChar === 'f4') {
+            data = new Float32Array(dataBuffer);
+            dtype = 'float32';
+        } else if (dtypeChar === 'f8') {
+            data = new Float64Array(dataBuffer);
+            dtype = 'float64';
+        } else if (dtypeChar === 'u1') {
+            data = new Uint8Array(dataBuffer);
+            dtype = 'uint8';
+        } else if (dtypeChar === 'u2') {
+            data = new Uint16Array(dataBuffer);
+            dtype = 'uint16';
+        } else if (dtypeChar === 'u4') {
+            data = new Uint32Array(dataBuffer);
+            dtype = 'uint32';
+        } else if (dtypeChar === 'i1') {
+            data = new Int8Array(dataBuffer);
+            dtype = 'int8';
+        } else if (dtypeChar === 'i2') {
+            data = new Int16Array(dataBuffer);
+            dtype = 'int16';
+        } else if (dtypeChar === 'i4') {
+            data = new Int32Array(dataBuffer);
+            dtype = 'int32';
+        } else if (dtypeChar === 'i8' || dtypeChar === 'u8') {
+            data = new BigInt64Array(dataBuffer);
+            dtype = dtypeChar === 'i8' ? 'int64' : 'uint64';
+        } else if (dtypeChar === 'c8') {
+            const floats = new Float32Array(dataBuffer);
+            const numPixels = shape[0] * shape[1];
+            const real = new Float32Array(numPixels);
+            const imag = new Float32Array(numPixels);
+            for (let i = 0; i < numPixels; i++) {
+                real[i] = floats[i * 2];
+                imag[i] = floats[i * 2 + 1];
+            }
+            data = { real, imag };
+            dtype = 'complex64';
+        } else if (dtypeChar === 'c16') {
+            const floats = new Float64Array(dataBuffer);
+            const numPixels = shape[0] * shape[1];
+            const real = new Float64Array(numPixels);
+            const imag = new Float64Array(numPixels);
+            for (let i = 0; i < numPixels; i++) {
+                real[i] = floats[i * 2];
+                imag[i] = floats[i * 2 + 1];
+            }
+            data = { real: new Float32Array(real), imag: new Float32Array(imag) };
+            dtype = 'complex128';
+        } else {
+            return { error: `Unsupported dtype: ${descr}` };
+        }
+
+        // Handle endianness for multi-byte types (non-complex)
+        if (!littleEndian && data.BYTES_PER_ELEMENT > 1) {
+            const bytes = new Uint8Array(dataBuffer);
+            const bpe = data.BYTES_PER_ELEMENT;
+            for (let i = 0; i < bytes.length; i += bpe) {
+                for (let j = 0; j < bpe / 2; j++) {
+                    const tmp = bytes[i + j];
+                    bytes[i + j] = bytes[i + bpe - 1 - j];
+                    bytes[i + bpe - 1 - j] = tmp;
+                }
+            }
+            // Recreate typed array
+            if (dtypeChar === 'f4') data = new Float32Array(dataBuffer);
+            else if (dtypeChar === 'f8') data = new Float64Array(dataBuffer);
+            else if (dtypeChar === 'u2') data = new Uint16Array(dataBuffer);
+            else if (dtypeChar === 'u4') data = new Uint32Array(dataBuffer);
+            else if (dtypeChar === 'i2') data = new Int16Array(dataBuffer);
+            else if (dtypeChar === 'i4') data = new Int32Array(dataBuffer);
+        }
+
+        return { data, shape, dtype };
+    }
+    </script>
+</body>
+</html>
