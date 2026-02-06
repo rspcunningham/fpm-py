@@ -2,6 +2,8 @@
 
 Fourier Ptychographic Microscopy (FPM) reconstructs high-resolution images from multiple low-resolution captures taken under varying illumination angles.
 
+For up-to-date documentation and to ask questions about this repo, please [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/rspcunningham/fpm-py)
+
 ## Getting Started
 
 1. **Clone and install**
@@ -22,12 +24,6 @@ Fourier Ptychographic Microscopy (FPM) reconstructs high-resolution images from 
    uv run reconstruction_demo.py
    ```
    Loads the captures and jointly optimizes an object and pupil estimate to minimize the difference between predicted and measured intensities. Outputs `demo/object_result.png`.
-
-4. **(Optional) Visualize captures**
-   ```bash
-   uv run save_captures_as_png.py
-   ```
-   Converts the `.npy` capture files to PNGs for inspection. Useful for verifying that off-axis illuminations produce shifted/tilted versions of the scene.
 
 ## Data Format
 
