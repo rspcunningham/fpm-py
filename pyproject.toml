@@ -26,6 +26,7 @@ dependencies = [
 packages = ["src/ptych"]
 
 [tool.basedpyright]
+extraPaths = ["src"]
 reportMissingTypeStubs = false
 reportUnknownMemberType = false
 reportUnusedCallResult = false

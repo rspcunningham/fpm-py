@@ -8,25 +8,25 @@ fft2 = cast(Callable[..., torch.Tensor], partial(torch.fft.fft2, norm="ortho"))
 ifft2 = cast(Callable[..., torch.Tensor], partial(torch.fft.ifft2, norm="ortho"))
 
 def forward_model(
-    object_tensor: Complex[torch.Tensor, "N N"],
+    object_tensor: Complex[torch.Tensor, "T N N"],
     pupil_tensor: Complex[torch.Tensor, "N N"],
     kx: Float[torch.Tensor, "B"],
     ky: Float[torch.Tensor, "B"]
-) -> Float[torch.Tensor, "B N N"]:
+) -> Float[torch.Tensor, "T B N N"]:
     """
     Forward model - returns images at each k-space location given an object
 
     Args:
-        object_tensor (torch.Tensor): Object tensor [N, N] (0, 1)
+        object_tensor (torch.Tensor): Object tensor [T, N, N] (0, 1)
         pupil_tensor (torch.Tensor): Pupil tensor [N, N] -- DC at [0, 0]
         kx (torch.Tensor): Wavevector shift(s) in x direction, normalized. Tensor [B] (-0.5, 0.5)
         ky (torch.Tensor): Wavevector shift(s) in y direction, normalized. Tensor [B] (-0.5, 0.5)
 
     Returns:
-        torch.Tensor: Predicted intensities [B, N, N]
+        torch.Tensor: Predicted intensities [T, B, N, N]
     """
 
-    N, _ = object_tensor.shape
+    T, N, _ = object_tensor.shape
     dtype = object_tensor.dtype
     device = object_tensor.device
     kx_reshaped = kx.view(-1, 1, 1)
@@ -44,18 +44,18 @@ def forward_model(
 
 
     # Apply phase ramps to object (multiply in spatial domain = shift in frequency domain)
-    tilted_objects = object_tensor[None, :, :] * phase_ramps  # [B, N, N]
+    tilted_objects = object_tensor[:, None] * phase_ramps[None]  # [T, B, N, N]
 
     # Batch FFT all tilted objects
-    objects_fourier = fft2(tilted_objects)  # [B, N, N]
+    objects_fourier = fft2(tilted_objects)  # [T, B, N, N]
 
-    # Apply pupil filter (broadcast over batch dimension)
-    filtered_fourier = pupil_tensor[None, :, :] * objects_fourier  # [B, N, N]
+    # Apply pupil filter (broadcast over tile and batch dimensions)
+    filtered_fourier = pupil_tensor * objects_fourier  # [T, B, N, N]
 
     # Batch inverse FFT
-    complex_image_fields = ifft2(filtered_fourier)  # [B, N, N]
+    complex_image_fields = ifft2(filtered_fourier)  # [T, B, N, N]
 
     # Compute intensities
-    predicted_intensities = torch.abs(complex_image_fields)**2  # [B, N, N]
+    predicted_intensities = torch.abs(complex_image_fields)**2  # [T, B, N, N]
 
     return predicted_intensities

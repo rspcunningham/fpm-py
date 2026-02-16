@@ -39,15 +39,15 @@ class ZernikeBasis:
     - rho_pixels: radial distance in pixels (unnormalized)
     - theta: angular coordinates
     - angular_parts: cos(m*θ) or sin(|m|*θ) for each term
-    - poly_coeffs: polynomial coefficients for each term
-    - poly_powers: corresponding powers for each term
+    - poly_coeffs: zero-padded polynomial coefficients [T, max_k] (float)
+    - poly_powers: zero-padded powers [T, max_k] (float, for differentiable rho^p)
     """
 
     rho_pixels: Float[Tensor, "N N"]
     theta: Float[Tensor, "N N"]
     angular_parts: Float[Tensor, "max_terms N N"]
-    poly_coeffs: list[Tensor]  # list of [num_k] tensors
-    poly_powers: list[Tensor]  # list of [num_k] tensors (integer powers)
+    poly_coeffs: Float[Tensor, "T max_k"]
+    poly_powers: Float[Tensor, "T max_k"]
     size: int
     num_phase_terms: int
     num_amp_terms: int
@@ -57,8 +57,8 @@ class ZernikeBasis:
         rho_pixels: Tensor,
         theta: Tensor,
         angular_parts: Tensor,
-        poly_coeffs: list[Tensor],
-        poly_powers: list[Tensor],
+        poly_coeffs: Tensor,
+        poly_powers: Tensor,
         size: int,
         num_phase_terms: int,
         num_amp_terms: int,
@@ -78,8 +78,8 @@ class ZernikeBasis:
             rho_pixels=self.rho_pixels.to(device),
             theta=self.theta.to(device),
             angular_parts=self.angular_parts.to(device),
-            poly_coeffs=[c.to(device) for c in self.poly_coeffs],
-            poly_powers=[p.to(device) for p in self.poly_powers],
+            poly_coeffs=self.poly_coeffs.to(device),
+            poly_powers=self.poly_powers.to(device),
             size=self.size,
             num_phase_terms=self.num_phase_terms,
             num_amp_terms=self.num_amp_terms,
@@ -211,8 +211,8 @@ def precompute_zernike_basis(
 
     # Precompute angular parts and polynomial coefficients for each term
     angular_parts_list: list[Tensor] = []
-    poly_coeffs_list: list[Tensor] = []
-    poly_powers_list: list[Tensor] = []
+    coeffs_list: list[list[float]] = []
+    powers_list: list[list[int]] = []
 
     for j in range(1, max_terms + 1):
         n, m = noll_to_nm(j)
@@ -226,47 +226,30 @@ def precompute_zernike_basis(
             angular = torch.ones_like(theta)
         angular_parts_list.append(angular)
 
-        # Radial polynomial coefficients and powers
         coeffs, powers = compute_radial_coefficients(n, abs(m))
-        poly_coeffs_list.append(torch.tensor(coeffs, device=device, dtype=dtype))
-        poly_powers_list.append(torch.tensor(powers, device=device, dtype=torch.long))
+        coeffs_list.append(coeffs)
+        powers_list.append(powers)
 
     angular_parts = torch.stack(angular_parts_list)  # [max_terms, N, N]
+
+    # Zero-pad variable-length coefficients/powers into rectangular float tensors
+    max_k = max(len(c) for c in coeffs_list)
+    poly_coeffs = torch.zeros(max_terms, max_k, device=device, dtype=dtype)
+    poly_powers = torch.zeros(max_terms, max_k, device=device, dtype=dtype)
+    for i, (c, p) in enumerate(zip(coeffs_list, powers_list)):
+        poly_coeffs[i, :len(c)] = torch.tensor(c, dtype=dtype)
+        poly_powers[i, :len(p)] = torch.tensor(p, dtype=dtype)
 
     return ZernikeBasis(
         rho_pixels=rho_pixels,
         theta=theta,
         angular_parts=angular_parts,
-        poly_coeffs=poly_coeffs_list,
-        poly_powers=poly_powers_list,
+        poly_coeffs=poly_coeffs,
+        poly_powers=poly_powers,
         size=size,
         num_phase_terms=num_phase_terms,
         num_amp_terms=num_amp_terms,
     )
-
-
-def evaluate_zernike_term(
-    rho_norm: Tensor,
-    angular: Tensor,
-    coeffs: Tensor,
-    powers: Tensor,
-) -> Tensor:
-    """Evaluate a single Zernike term: radial_poly(rho_norm) * angular.
-
-    Args:
-        rho_norm: Normalized radial coordinate [N, N]
-        angular: Precomputed angular part [N, N]
-        coeffs: Polynomial coefficients [num_k]
-        powers: Corresponding powers [num_k]
-
-    Returns:
-        Evaluated Zernike polynomial [N, N]
-    """
-    # Evaluate radial polynomial: sum of coeff_k * rho^power_k
-    radial = torch.zeros_like(rho_norm)
-    for c, p in zip(coeffs, powers):
-        radial = radial + c * (rho_norm ** p)
-    return radial * angular
 
 
 def make_zernike_pupil(
@@ -303,33 +286,16 @@ def make_zernike_pupil(
     # Soft mask for gradient flow (sigmoid centered at rho_norm=1)
     mask = torch.sigmoid((1.0 - rho_norm) * mask_sharpness)
 
-    # Evaluate phase Zernike terms and sum with coefficients
+    # Vectorized evaluation of all Zernike terms at once
     num_phase = len(phase_coeffs)
-    phase_terms: list[Tensor] = []
-    for j in range(num_phase):
-        z = evaluate_zernike_term(
-            rho_norm,
-            basis.angular_parts[j],
-            basis.poly_coeffs[j],
-            basis.poly_powers[j],
-        )
-        phase_terms.append(z)
-    phase_basis = torch.stack(phase_terms)  # [num_phase, N, N]
-    phase = torch.einsum("i,ihw->hw", phase_coeffs, phase_basis)
-
-    # Evaluate amplitude Zernike terms and sum with coefficients
     num_amp = len(amp_coeffs)
-    amp_terms: list[Tensor] = []
-    for j in range(num_amp):
-        z = evaluate_zernike_term(
-            rho_norm,
-            basis.angular_parts[j],
-            basis.poly_coeffs[j],
-            basis.poly_powers[j],
-        )
-        amp_terms.append(z)
-    amp_basis = torch.stack(amp_terms)  # [num_amp, N, N]
-    amp_raw = torch.einsum("i,ihw->hw", amp_coeffs, amp_basis)
+    max_terms = max(num_phase, num_amp)
+    rho_powered = rho_norm[None, None] ** basis.poly_powers[:max_terms, :, None, None]  # [T, K, N, N]
+    radial_all = (basis.poly_coeffs[:max_terms, :, None, None] * rho_powered).sum(dim=1)  # [T, N, N]
+    zernike_all = radial_all * basis.angular_parts[:max_terms]  # [T, N, N]
+
+    phase = torch.einsum("i,ihw->hw", phase_coeffs, zernike_all[:num_phase])
+    amp_raw = torch.einsum("i,ihw->hw", amp_coeffs, zernike_all[:num_amp])
     amplitude = torch.nn.functional.softplus(amp_raw) if use_softplus else amp_raw
 
     # Construct complex pupil with soft mask

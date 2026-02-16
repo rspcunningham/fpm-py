@@ -28,8 +28,9 @@ def synthesize_captures(
     kx_batch = kx_batch / downsample_ratio
     ky_batch = ky_batch / downsample_ratio
 
-    # Run forward model at full resolution
-    intensities = forward_model(object_tensor, pupil_tensor, kx_batch, ky_batch)  # [B, N, N]
+    # Run forward model at full resolution (add T=1 batch dim)
+    intensities = forward_model(object_tensor[None], pupil_tensor, kx_batch, ky_batch)  # [1, B, N, N]
+    intensities = intensities.squeeze(0)  # [B, N, N]
 
     # Downsample using average pooling
     if downsample_ratio > 1:

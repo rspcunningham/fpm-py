@@ -11,17 +11,17 @@ from ptych.core.zernike import ZernikeParams, make_zernike_pupil
 eps = 1e-8
 
 def solve_inverse(
-    captures: Float[torch.Tensor, "B n n"], # [B, n, n] float on (0, 1)
-    object: Complex[torch.Tensor, "N N"], # [N, N] complex on (0, 1)
+    captures: Float[torch.Tensor, "T B n n"], # [T, B, n, n] float on (0, 1)
+    object: Complex[torch.Tensor, "T N N"], # [T, N, N] complex on (0, 1)
     pupil: Complex[torch.Tensor, "N N"] | ZernikeParams, # raw tensor OR Zernike params
     kx_batch: Float[torch.Tensor, "B"], # [B] float on (-0.5, 0.5) (normalized for an n * n grid!)
     ky_batch: Float[torch.Tensor, "B"], # [B] float on (-0.5, 0.5) (normalized for an n * n grid!)
     learn_pupil: bool = True,
     learn_k_vectors: bool = False,
     torch_device: str | torch.device = "cpu",
-    on_checkpoint: Callable[[int, Complex[torch.Tensor, "N N"]], None] | None = None,
+    on_checkpoint: Callable[[int, Complex[torch.Tensor, "T N N"]], None] | None = None,
     checkpoint_interval: int = 50,
-) -> tuple[Complex[torch.Tensor, "N N"], Complex[torch.Tensor, "N N"] | ZernikeParams, dict[str, list[float]]]:
+) -> tuple[Complex[torch.Tensor, "T N N"], Complex[torch.Tensor, "N N"] | ZernikeParams, dict[str, list[float]]]:
 
     # Detect Zernike mode
     use_zernike = isinstance(pupil, ZernikeParams)
@@ -32,26 +32,28 @@ def solve_inverse(
     kx_batch = kx_batch.to(torch_device)
     ky_batch = ky_batch.to(torch_device)
 
+    T, B, n, _ = captures.shape
     epochs = 1000
 
-    if object.shape[0] % captures.shape[1] != 0:
+    if object.shape[1] % captures.shape[2] != 0:
             raise ValueError(
-                f"Object size ({object.shape[0]}) must be integer multiple of capture size ({captures.shape[1]})"
+                f"Object size ({object.shape[1]}) must be integer multiple of capture size ({captures.shape[2]})"
             )
 
-    upsample_ratio = object.shape[0] // captures.shape[1]
+    upsample_ratio = object.shape[1] // captures.shape[2]
+    N = object.shape[1]
 
     # renormalize k vectors
     kx_batch = kx_batch / upsample_ratio
     ky_batch = ky_batch / upsample_ratio
 
     learned_tensors: list[dict[str, torch.Tensor | float]] = []
-    object_amp = torch.abs(object).clone().detach().requires_grad_(True)
-    object_phase = torch.angle(object).clone().detach().requires_grad_(True)
+    object_amp = torch.abs(object).clone().detach().requires_grad_(True)      # [T, N, N]
+    object_phase = torch.angle(object).clone().detach().requires_grad_(True)  # [T, N, N]
     learned_tensors.append({'params': object_amp, 'lr': 0.001})
     learned_tensors.append({'params': object_phase, 'lr': 0.001})
 
-    intensity_scale = torch.nn.Parameter(torch.tensor(1.0))
+    intensity_scale = torch.nn.Parameter(torch.ones(T, device=torch_device))  # [T]
     learned_tensors.append({'params': intensity_scale, 'lr': 0.001})
 
     # Handle pupil setup (Zernike vs raw tensor)
@@ -98,11 +100,8 @@ def solve_inverse(
     # Initialize the optimizer
     optimizer = torch.optim.AdamW(learned_tensors)
 
-    # Telemetry
-    metrics: dict[str, list[float]] = {
-        'loss': [],
-        'lr': []
-    }
+    # Telemetry — accumulate loss on GPU, transfer to CPU only when needed
+    loss_accumulator = torch.zeros(epochs, device=torch_device)
 
     # Training loop
     for epoch in tqdm(range(epochs), desc="Solving inverse model..."):
@@ -116,39 +115,44 @@ def solve_inverse(
             )
 
         # Reconstruct complex object from amplitude and phase
-        object_complex = object_amp * torch.exp(1j * object_phase)
+        object_complex = object_amp * torch.exp(1j * object_phase)  # [T, N, N]
 
         # Batched forward pass
-        predicted_intensities = forward_model(object_complex, pupil_tensor, kx_batch, ky_batch)  # [B, N, N]
+        predicted_intensities = forward_model(object_complex, pupil_tensor, kx_batch, ky_batch)  # [T, B, N, N]
+        N2 = predicted_intensities.shape[-1]
         downsampled = F.avg_pool2d(
-            predicted_intensities.unsqueeze(1),  # [B, 1, N, N]
+            predicted_intensities.reshape(T * B, 1, N2, N2),
             kernel_size=upsample_ratio,
             stride=upsample_ratio
-        ).squeeze(1)  # [B, n, n]
+        ).reshape(T, B, n, n)  # [T, B, n, n]
 
         # Compute loss across all captures
-        scaled_pred = intensity_scale * downsampled
-        total_loss = torch.nn.functional.l1_loss(torch.sqrt(scaled_pred + eps), torch.sqrt(captures + eps))
+        scaled_pred = intensity_scale[:, None, None, None] * downsampled  # [T, B, n, n]
+        total_loss = F.l1_loss(torch.sqrt(scaled_pred + eps), torch.sqrt(captures + eps))
 
         # Backward pass
         optimizer.zero_grad()
         total_loss.backward()
         optimizer.step()
-        #scheduler.step()
 
-        # Record loss for this epoch
-        metrics['loss'].append(total_loss.item())
-        #metrics['lr'].append(scheduler.get_last_lr()[0])
+        # Record loss on GPU (no sync)
+        loss_accumulator[epoch] = total_loss.detach()
 
         # Checkpoint callback
         if on_checkpoint is not None and epoch % checkpoint_interval == 0:
             object_checkpoint = (object_amp * torch.exp(1j * object_phase)).detach().clone()
             on_checkpoint(epoch, object_checkpoint)
 
-    # Reconstruct final complex object from optimized amplitude and phase
-    object_final = object_amp.detach() * torch.exp(1j * object_phase.detach())
+    # Transfer loss history to CPU in one bulk operation
+    metrics: dict[str, list[float]] = {
+        'loss': loss_accumulator.cpu().tolist(),
+        'lr': []
+    }
 
-    print(f"Final intensity scale: {intensity_scale.item()}")
+    # Reconstruct final complex object from optimized amplitude and phase
+    object_final = object_amp.detach() * torch.exp(1j * object_phase.detach())  # [T, N, N]
+
+    print(f"Final intensity scale: {intensity_scale.detach().cpu().tolist()}")
 
     if working_zernike is not None:
         return (

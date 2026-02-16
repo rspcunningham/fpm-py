@@ -39,13 +39,14 @@ rad_fraction = torch.tensor(0.15)  # Learnable radius fraction
 pupil = ZernikeParams(phase_coeffs, amp_coeffs, basis, rad_fraction)
 
 object, pupil, metrics = solve_inverse(
-    study.captures,
-    object_tensor,
+    study.captures[None],  # [1, B, n, n]
+    object_tensor[None],   # [1, N, N]
     pupil,
     study.kx_batch,
     study.ky_batch,
     torch_device="mps",
 )
+object = object.squeeze(0)  # [N, N]
 
 # Save object result as PNG
 object_amplitude: np.ndarray[tuple[int, int], np.dtype[np.float32]] = object.abs().cpu().numpy()
