@@ -98,15 +98,6 @@ def solve_inverse(
     # Initialize the optimizer
     optimizer = torch.optim.AdamW(learned_tensors)
 
-    """scheduler = torch.optim.lr_scheduler.OneCycleLR(
-        optimizer,
-        max_lr=0.05,
-        total_steps=epochs,
-        pct_start=0.3,
-        anneal_strategy='cos',
-        final_div_factor=1,
-    )"""
-
     # Telemetry
     metrics: dict[str, list[float]] = {
         'loss': [],
