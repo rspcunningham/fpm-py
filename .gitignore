@@ -14,5 +14,4 @@ build/
 tmp/
 .DS_Store
 
-demo/captures
-demo/object_result.png
+work_scripts/

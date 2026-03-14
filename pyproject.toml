@@ -22,6 +22,9 @@ dependencies = [
     "tqdm>=4.67.1",
 ]
 
+[project.scripts]
+histogram-analysis = "ptych.tools.histogram_analysis:main"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/ptych"]
 

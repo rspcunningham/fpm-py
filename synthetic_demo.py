@@ -1,5 +1,3 @@
-"""Demo script for generating synthetic FPM captures from bars.png."""
-
 import numpy as np
 import torch
 from PIL import Image
@@ -7,9 +5,18 @@ from PIL import Image
 from ptych.data.synthetic import generate_synthetic_study
 from ptych.core.zernike import precompute_zernike_basis, make_zernike_pupil
 
+study_dir = "tmp/usaf_binary"
+
 # Load gold.png and convert to grayscale float [0, 1]
-img = Image.open(f"demo/gold.png").convert("L")
+img = Image.open(f"{study_dir}/ideal.png").convert("L")
 amplitude = np.array(img, dtype=np.float32) / 255.0
+
+# Center-crop to a square so the current synthetic pipeline receives NxN tensors.
+height, width = amplitude.shape
+crop_size = min(height, width)
+top = (height - crop_size) // 2
+left = (width - crop_size) // 2
+amplitude = amplitude[top:top + crop_size, left:left + crop_size]
 
 # Create object tensor: phase proportional to amplitude
 # Scale phase to [0, 2*pi] range
@@ -31,18 +38,12 @@ rad_fraction = 0.15  # rad_fraction=0.15 matches current 0.30/2 radius
 # Generate pupil (use_softplus=False for exact amplitude)
 pupil_tensor = make_zernike_pupil(phase_coeffs, amp_coeffs, basis, rad_fraction, use_softplus=False)
 
-object_amplitude_u8 = np.asarray(
-    pupil_tensor.real / pupil_tensor.real.max() * 255, dtype=np.uint8
-)
-Image.fromarray(object_amplitude_u8).save(f"tmp/test/object_result.png")
-
 # Set downsample factor
 downsample_ratio = 4
 
 # Run synthetic study generation
 generate_synthetic_study(
-    dir_path="tmp/test",
+    dir_path=study_dir,
     object_tensor=object_tensor,
-    pupil_tensor=pupil_tensor,
-    downsample_ratio=downsample_ratio,
+    pupil_tensor=pupil_tensor
 )

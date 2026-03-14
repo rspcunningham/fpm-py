@@ -1,4 +1,3 @@
-"""Generate synthetic FPM captures from ground truth object and pupil."""
 from pathlib import Path
 import json
 from typing import cast
@@ -15,7 +14,6 @@ def generate_synthetic_study(
     dir_path: str | Path,
     object_tensor: Complex[torch.Tensor, "N N"],
     pupil_tensor: Complex[torch.Tensor, "N N"],
-    downsample_ratio: int,
 ) -> None:
     """
     Generate synthetic captures from info.json and save to captures/ directory.
@@ -51,7 +49,17 @@ def generate_synthetic_study(
             f"Multi-LED captures are not supported yet. "
             f"Capture {i} ({cap.filename}) has {len(cap.led_positions)} LED positions."
         )
+
     # === End temporary assertions ===
+
+    # Get the downsample ratio from the ideal object and target capture size
+    width, height = manifest.capture_dimensions.width, manifest.capture_dimensions.height
+    ratio_x = object_tensor.shape[1] / width
+    ratio_y = object_tensor.shape[0] / height
+    if ratio_x != ratio_y:
+        raise ValueError(f"Downsample ratios in x and y do not match: {ratio_x} vs {ratio_y}. Please ensure the desired capture size is the same aspect ratio as the object tensor.")
+    if ratio_x != int(ratio_x):
+        raise ValueError(f"Downsample ratio is not an integer: {ratio_x}. Please ensure the desired capture size is an integer fraction of the object tensor size.")
 
     # Compute k-vectors from LED positions
     k_vectors = [
@@ -68,7 +76,7 @@ def generate_synthetic_study(
 
     # Generate synthetic captures
     captures = synthesize_captures(
-        object_tensor, pupil_tensor, kx_batch, ky_batch, downsample_ratio
+        object_tensor, pupil_tensor, kx_batch, ky_batch, int(ratio_x)
     )
 
     # Save to captures/ directory
