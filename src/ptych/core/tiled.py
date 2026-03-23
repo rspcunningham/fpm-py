@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from jaxtyping import Float, Complex
 
 from ptych.core.inverse import solve_inverse
-from ptych.core.zernike import ZernikeParams, precompute_zernike_basis
+from ptych.core.pupil import ZernikeParams, precompute_zernike_basis
 from ptych.data.study import PtychStudy
 
 eps = 1e-8

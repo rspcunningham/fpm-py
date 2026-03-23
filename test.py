@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from ptych import solve_tiled, PtychStudy
-from ptych.core.zernike import ZernikeParams, make_zernike_pupil
+from ptych.core.pupil import ZernikeParams, make_zernike_pupil
 from interpolation import interpolate_green
 
 BASE_DIR = "./tmp/6456b6d0-3b2a-4fef-a734-cc64d68bd4ac"

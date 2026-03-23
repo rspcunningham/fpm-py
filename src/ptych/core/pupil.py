@@ -1,29 +1,3 @@
-"""
-Functional Zernike pupil generation with learnable radius.
-
-Pure-function API matching the jax-like style of forward.py/inverse.py.
-
-The basis precomputes radius-independent components:
-- Angular parts (cos/sin of theta)
-- Polynomial coefficients (factorial ratios)
-
-Radius-dependent evaluation happens at runtime for differentiability.
-
-Usage:
-    # Precompute basis once (no rad_fraction needed)
-    basis = precompute_zernike_basis(size=256)
-
-    # Create learnable coefficients and radius
-    phase_coeffs = torch.zeros(21, requires_grad=True)
-    amp_coeffs = torch.zeros(11)
-    amp_coeffs[0] = 1.0
-    amp_coeffs = amp_coeffs.requires_grad_(True)
-    rad_fraction = torch.tensor(0.2, requires_grad=True)
-
-    # In training loop:
-    pupil = make_zernike_pupil(phase_coeffs, amp_coeffs, basis, rad_fraction)
-"""
-
 import math
 from typing import NamedTuple
 
@@ -349,4 +323,27 @@ def init_rad_fraction(
         rad = rad.requires_grad_(True)
     return rad
 
+def make_ideal_pupil(
+    N: int,
+    NA: float,
+    wavelength_m: float,
+    sensor_pixel_size_m: float,
+    magnification: float,
+    downsample_ratio: int,
+    device=None,
+    dtype=torch.complex64,
+) -> torch.Tensor:
+    # Full-resolution object-plane pixel size
+    dx_obj = sensor_pixel_size_m / (magnification * downsample_ratio)
 
+    # Fourier coordinates in cycles / meter, unshifted, DC at index 0
+    fx = torch.fft.fftfreq(N, d=dx_obj, device=device)
+    fy = torch.fft.fftfreq(N, d=dx_obj, device=device)
+    fy_grid, fx_grid = torch.meshgrid(fy, fx, indexing="ij")
+
+    fc = NA / wavelength_m  # coherent cutoff, cycles / meter
+
+    mask = (fx_grid**2 + fy_grid**2 <= fc**2)
+    pupil = mask.to(dtype)
+
+    return pupil
