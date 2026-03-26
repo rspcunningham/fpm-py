@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from typing import Any
 
 import torch
 import torch.nn.functional as F
@@ -11,7 +12,7 @@ from ptych.core.pupil import ZernikeParams, make_zernike_pupil
 def solve_inverse(
     captures: Float[torch.Tensor, "T B n n"], # [T, B, n, n] float on (0, 1)
     object: Complex[torch.Tensor, "T N N"], # [T, N, N] complex on (0, 1)
-    pupil: Complex[torch.Tensor, "N N"] | ZernikeParams, # raw tensor OR Zernike params
+    pupil: ZernikeParams,
     kx_batch: Float[torch.Tensor, "B"], # [B] float on (-0.5, 0.5) (normalized for an n * n grid!)
     ky_batch: Float[torch.Tensor, "B"], # [B] float on (-0.5, 0.5) (normalized for an n * n grid!)
     learn_pupil: bool = True,
@@ -19,10 +20,7 @@ def solve_inverse(
     torch_device: str | torch.device = "cpu",
     on_checkpoint: Callable[[int, Complex[torch.Tensor, "T N N"]], None] | None = None,
     checkpoint_interval: int = 50,
-) -> tuple[Complex[torch.Tensor, "T N N"], Complex[torch.Tensor, "N N"] | ZernikeParams, dict[str, list[float]]]:
-
-    # Detect Zernike mode
-    use_zernike = isinstance(pupil, ZernikeParams)
+) -> tuple[Complex[torch.Tensor, "T N N"], ZernikeParams, dict[str, Any]]:
 
     # Move all tensors to the specified device
     captures = captures.to(torch_device)
@@ -54,37 +52,27 @@ def solve_inverse(
     intensity_scale = torch.ones(B, device=torch_device).requires_grad_(True)  # [B]
     learned_tensors.append({'params': intensity_scale, 'lr': 0.001})
 
-    # Handle pupil setup (Zernike vs raw tensor)
-    working_zernike: ZernikeParams | None = None
-    if use_zernike:
-        # Clone/detach coefficients and rad_fraction (basis is fixed, not cloned)
-        phase_coeffs = pupil.phase_coeffs.clone().detach().to(torch_device)
-        amp_coeffs = pupil.amp_coeffs.clone().detach().to(torch_device)
-        rad_fraction = pupil.rad_fraction.clone().detach().to(torch_device)
-        basis = pupil.basis.to(torch_device)
+    # Clone/detach coefficients and rad_fraction (basis is fixed, not cloned)
+    phase_coeffs = pupil.phase_coeffs.clone().detach().to(torch_device)
+    amp_coeffs = pupil.amp_coeffs.clone().detach().to(torch_device)
+    rad_fraction = pupil.rad_fraction.clone().detach().to(torch_device)
+    basis = pupil.basis.to(torch_device)
 
-        if learn_pupil:
-            phase_coeffs = phase_coeffs.requires_grad_(True)
-            amp_coeffs = amp_coeffs.requires_grad_(True)
-            rad_fraction = rad_fraction.requires_grad_(True)
-            learned_tensors.append({'params': phase_coeffs, 'lr': 0.0001})
-            learned_tensors.append({'params': amp_coeffs, 'lr': 0.0001})
-            learned_tensors.append({'params': rad_fraction, 'lr': 0.0001})
+    if learn_pupil:
+        phase_coeffs = phase_coeffs.requires_grad_(True)
+        amp_coeffs = amp_coeffs.requires_grad_(True)
+        rad_fraction = rad_fraction.requires_grad_(True)
+        learned_tensors.append({'params': phase_coeffs, 'lr': 0.0001})
+        learned_tensors.append({'params': amp_coeffs, 'lr': 0.0001})
+        learned_tensors.append({'params': rad_fraction, 'lr': 0.0001})
 
-        # Generate initial pupil tensor
-        working_zernike = ZernikeParams(phase_coeffs, amp_coeffs, basis, rad_fraction)
-        pupil_tensor = make_zernike_pupil(
-            working_zernike.phase_coeffs,
-            working_zernike.amp_coeffs,
-            working_zernike.basis,
-            working_zernike.rad_fraction,
-        )
-    else:
-        # Raw tensor path
-        pupil_tensor = pupil.clone().detach().to(torch_device)
-        if learn_pupil:
-            pupil_tensor = pupil_tensor.requires_grad_(True)
-            learned_tensors.append({'params': pupil_tensor, 'lr': 0.05})
+    working_zernike = ZernikeParams(phase_coeffs, amp_coeffs, basis, rad_fraction)
+    pupil_tensor = make_zernike_pupil(
+        working_zernike.phase_coeffs,
+        working_zernike.amp_coeffs,
+        working_zernike.basis,
+        working_zernike.rad_fraction,
+    )
 
     if learn_k_vectors:
         kx_batch = kx_batch.clone().detach().requires_grad_(True)
@@ -100,17 +88,17 @@ def solve_inverse(
 
     # Telemetry — accumulate loss on GPU, transfer to CPU only when needed
     loss_accumulator = torch.zeros(epochs, device=torch_device)
+    tile_loss_accumulator = torch.zeros(epochs, T, device=torch_device)
+    capture_loss_accumulator = torch.zeros(epochs, B, device=torch_device)
 
     # Training loop
     for epoch in tqdm(range(epochs), desc="Solving inverse model..."):
-        # Regenerate pupil from coefficients each iteration (if Zernike)
-        if working_zernike is not None:
-            pupil_tensor = make_zernike_pupil(
-                working_zernike.phase_coeffs,
-                working_zernike.amp_coeffs,
-                working_zernike.basis,
-                working_zernike.rad_fraction,
-            )
+        pupil_tensor = make_zernike_pupil(
+            working_zernike.phase_coeffs,
+            working_zernike.amp_coeffs,
+            working_zernike.basis,
+            working_zernike.rad_fraction,
+        )
 
         # Reconstruct complex object from amplitude and phase
         object_complex = object_amp * torch.exp(1j * object_phase)  # [T, N, N]
@@ -126,7 +114,11 @@ def solve_inverse(
 
         # Compute loss across all captures
         scaled_pred = intensity_scale[None, :, None, None] * downsampled  # [T, B, n, n]
-        total_loss = F.l1_loss(torch.sqrt(scaled_pred + 1e-8), torch.sqrt(captures + 1e-8))
+        residual = torch.sqrt(scaled_pred + 1e-8) - torch.sqrt(captures + 1e-8)
+        squared_residual = residual.square()
+        total_loss = squared_residual.mean()
+        tile_loss = squared_residual.mean(dim=(1, 2, 3))
+        capture_loss = squared_residual.mean(dim=(0, 2, 3))
 
         # Backward pass
         optimizer.zero_grad()
@@ -135,6 +127,8 @@ def solve_inverse(
 
         # Record loss on GPU (no sync)
         loss_accumulator[epoch] = total_loss.detach()
+        tile_loss_accumulator[epoch] = tile_loss.detach()
+        capture_loss_accumulator[epoch] = capture_loss.detach()
 
         # Checkpoint callback
         if on_checkpoint is not None and epoch % checkpoint_interval == 0:
@@ -142,23 +136,22 @@ def solve_inverse(
             on_checkpoint(epoch, object_checkpoint)
 
     # Transfer loss history to CPU in one bulk operation
-    metrics: dict[str, list[float]] = {
+    metrics: dict[str, Any] = {
         'loss': loss_accumulator.cpu().tolist(),
+        'tile_loss': tile_loss_accumulator.cpu().tolist(),
+        'capture_loss': capture_loss_accumulator.cpu().tolist(),
     }
 
     # Reconstruct final complex object from optimized amplitude and phase
     object_final = object_amp.detach() * torch.exp(1j * object_phase.detach())  # [T, N, N]
 
-    if working_zernike is not None:
-        return (
-            object_final,
-            ZernikeParams(
-                working_zernike.phase_coeffs.detach(),
-                working_zernike.amp_coeffs.detach(),
-                working_zernike.basis,
-                working_zernike.rad_fraction.detach(),
-            ),
-            metrics
-        )
-    else:
-        return object_final, pupil_tensor.detach(), metrics
+    return (
+        object_final,
+        ZernikeParams(
+            working_zernike.phase_coeffs.detach(),
+            working_zernike.amp_coeffs.detach(),
+            working_zernike.basis,
+            working_zernike.rad_fraction.detach(),
+        ),
+        metrics
+    )

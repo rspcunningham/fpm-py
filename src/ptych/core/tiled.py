@@ -19,7 +19,8 @@ def solve_tiled(
     roi_size: int,
     upsample_ratio: int = 4,
     torch_device: str | torch.device = "cpu",
-    on_tile_complete: Callable[[int, int, torch.Tensor, ZernikeParams, dict[str, list[float]]], None] | None = None,
+    on_tile_complete: Callable[[int, int, torch.Tensor, ZernikeParams, dict[str, Any]], None] | None = None,
+    on_batch_complete: Callable[[list[tuple[int, int]], ZernikeParams, dict[str, Any]], None] | None = None,
     tile_batch_size: int = 1,
     **kwargs: Any,
 ) -> Complex[torch.Tensor, "N N"]:
@@ -34,6 +35,7 @@ def solve_tiled(
         upsample_ratio: Super-resolution factor per tile.
         torch_device: Device for solve_inverse.
         on_tile_complete: Callback(row, col, object, pupil, metrics) after each tile.
+        on_batch_complete: Callback(batch_tiles, pupil, metrics) after each batch solve.
         tile_batch_size: Number of tiles to solve simultaneously.
         **kwargs: Forwarded to solve_inverse (learn_pupil, checkpoint_interval, etc.).
 
@@ -120,7 +122,9 @@ def solve_tiled(
             torch_device=torch_device,
             **kwargs,
         )
-        assert isinstance(solved_pupil, ZernikeParams)
+
+        if on_batch_complete is not None:
+            on_batch_complete(batch, solved_pupil, metrics)
 
         # e. Unpack into output grid
         for i, (r, c) in enumerate(batch):
