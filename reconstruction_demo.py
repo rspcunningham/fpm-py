@@ -9,7 +9,7 @@ from matplotlib import pyplot as plt
 
 from ptych import solve_tiled, PtychStudy
 from ptych.core.pupil import make_ideal_pupil, make_zernike_pupil, ZernikeParams
-from interpolation import interpolate_green
+from ptych.data.bayer import interpolate_green
 
 #BASE_DIR = "./demo/synthetic"
 BASE_DIR = "./demo/real"
