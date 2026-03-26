@@ -15,6 +15,7 @@ def solve_inverse(
     pupil: ZernikeParams,
     kx_batch: Float[torch.Tensor, "B"], # [B] float on (-0.5, 0.5) (normalized for an n * n grid!)
     ky_batch: Float[torch.Tensor, "B"], # [B] float on (-0.5, 0.5) (normalized for an n * n grid!)
+    epochs: int = 1000,
     learn_pupil: bool = True,
     learn_k_vectors: bool = False,
     torch_device: str | torch.device = "cpu",
@@ -29,7 +30,6 @@ def solve_inverse(
     ky_batch = ky_batch.to(torch_device)
 
     T, B, n, _ = captures.shape
-    epochs = 1000
 
     if object.shape[1] % captures.shape[2] != 0:
             raise ValueError(

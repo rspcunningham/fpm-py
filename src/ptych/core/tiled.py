@@ -18,6 +18,7 @@ def solve_tiled(
     pupil: ZernikeParams,
     roi_size: int,
     upsample_ratio: int = 4,
+    epochs: int = 1000,
     torch_device: str | torch.device = "cpu",
     on_tile_complete: Callable[[int, int, torch.Tensor, ZernikeParams, dict[str, Any]], None] | None = None,
     on_batch_complete: Callable[[list[tuple[int, int]], ZernikeParams, dict[str, Any]], None] | None = None,
@@ -33,6 +34,7 @@ def solve_tiled(
         pupil: Initial ZernikeParams (re-initialized per tile batch from these values).
         roi_size: Size of each square tile (pixels).
         upsample_ratio: Super-resolution factor per tile.
+        epochs: Optimization steps per tile batch.
         torch_device: Device for solve_inverse.
         on_tile_complete: Callback(row, col, object, pupil, metrics) after each tile.
         on_batch_complete: Callback(batch_tiles, pupil, metrics) after each batch solve.
@@ -119,6 +121,7 @@ def solve_tiled(
             tile_pupil,
             kx,
             ky,
+            epochs=epochs,
             torch_device=torch_device,
             **kwargs,
         )

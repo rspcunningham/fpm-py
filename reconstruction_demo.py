@@ -1,53 +1,40 @@
-import os
+from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import numpy as np
-import torch
 import seaborn as sns
+import torch
 from PIL import Image
 from matplotlib import pyplot as plt
 
-from ptych import solve_tiled, PtychStudy
-from ptych.core.pupil import make_ideal_pupil, make_zernike_pupil, ZernikeParams
+from ptych import PtychStudy, solve_tiled
+from ptych.core.pupil import ZernikeParams, make_ideal_pupil, make_zernike_pupil
 from ptych.data.bayer import interpolate_green
 
-#BASE_DIR = "./demo/synthetic"
-BASE_DIR = "./demo/real"
-OUTPUT_DIR = f"{BASE_DIR}/output"
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+# Experiment settings
+# BASE_DIR = Path("./demo/synthetic")
+BASE_DIR = Path("./demo/real")
+OUTPUT_DIR = BASE_DIR / "output"
 
-study = PtychStudy.from_disk(BASE_DIR)
+ROI_SIZE = 128
+CROP_SIZE = 256
+N_CAPTURES = 61
 
-# Center-crop to 256x256 for quick validation (2x2 grid of 128 tiles)
-roi_size = 128
-crop_size = 256
-_, h, w = study.captures.shape
-sh, sw = (h - crop_size) // 2, (w - crop_size) // 2
+UPSAMPLE_RATIO = 4
+NA = 0.13 # used to generate the initial guess of pupil, still a free param.
+NUM_PHASE_TERMS = 20
+NUM_AMP_TERMS = 20
 
-n_captures = 37
-captures = study.captures[:n_captures, sh:sh + crop_size, sw:sw + crop_size]
-captures = interpolate_green(captures)
-captures = captures / captures.max()
-n_rows = captures.shape[1] // roi_size
-n_cols = captures.shape[2] // roi_size
+TORCH_DEVICE = "mps"
+TILE_BATCH_SIZE = 4
+EPOCHS = 1000
 
-# Initialize pupil from NA and optical parameters
-upsample_ratio = 4
-N = roi_size * upsample_ratio
-
-pupil = make_ideal_pupil(
-    N=N,
-    NA=0.13,
-    wavelength_m=study.manifest.captures[0].wavelength,
-    sensor_pixel_size_m=study.manifest.sensor_pixel_size,
-    magnification=study.manifest.magnification,
-    downsample_ratio=upsample_ratio,
-    num_phase_terms=20,
-    num_amp_terms=20,
-)
+TileCompleteCallback = Callable[[int, int, torch.Tensor, ZernikeParams, dict[str, Any]], None]
+BatchCompleteCallback = Callable[[list[tuple[int, int]], ZernikeParams, dict[str, Any]], None]
 
 
-def save_tensor(tensor: torch.Tensor, path: str):
+def save_tensor(tensor: torch.Tensor, path: Path) -> None:
     np.save(path, tensor.cpu().numpy())
 
 
@@ -102,7 +89,7 @@ def normalize_preview(
 
 def save_preview_png(
     tensor: torch.Tensor,
-    path: str,
+    path: Path,
     *,
     mode: str = "intensity",
     lower_pct: float = 0.5,
@@ -131,9 +118,7 @@ def save_preview_png(
 def save_metrics_summary(
     batch_metrics_records: list[dict[str, Any]],
     *,
-    n_rows: int,
-    n_cols: int,
-    path: str,
+    path: Path,
 ) -> None:
     sns.set_theme(style="darkgrid")
     fig, (ax_loss, ax_capture) = plt.subplots(1, 2, figsize=(14, 5))
@@ -170,49 +155,123 @@ def save_metrics_summary(
 
     plt.tight_layout()
     plt.savefig(path, dpi=150)
-    plt.close()
+    plt.close(fig)
 
 
-batch_metrics_records: list[dict[str, Any]] = []
+def prepare_captures(
+    study: PtychStudy,
+    *,
+    n_captures: int,
+    crop_size: int,
+) -> torch.Tensor:
+    _, height, width = study.captures.shape
+    top = (height - crop_size) // 2
+    left = (width - crop_size) // 2
+
+    captures = study.captures[:n_captures, top:top + crop_size, left:left + crop_size]
+    captures = interpolate_green(captures)
+    return captures / captures.max()
 
 
-def on_tile_complete(r: int, c: int, obj: torch.Tensor, tile_pupil: ZernikeParams, metrics: dict[str, Any]):
-    # Save tensors
-    save_tensor(obj, f"{OUTPUT_DIR}/tile_{r}_{c}_object.npy")
-    pupil_tensor = make_zernike_pupil(tile_pupil.phase_coeffs, tile_pupil.amp_coeffs, tile_pupil.basis, tile_pupil.rad_fraction)
-    save_tensor(pupil_tensor, f"{OUTPUT_DIR}/tile_{r}_{c}_pupil.npy")
+def build_initial_pupil(
+    study: PtychStudy,
+    *,
+    roi_size: int,
+    upsample_ratio: int,
+    na: float,
+    num_phase_terms: int,
+    num_amp_terms: int,
+) -> ZernikeParams:
+    return make_ideal_pupil(
+        N=roi_size * upsample_ratio,
+        NA=na,
+        wavelength_m=study.manifest.captures[0].wavelength,
+        sensor_pixel_size_m=study.manifest.sensor_pixel_size,
+        magnification=study.manifest.magnification,
+        downsample_ratio=upsample_ratio,
+        num_phase_terms=num_phase_terms,
+        num_amp_terms=num_amp_terms,
+    )
 
-    print(f"Tile ({r},{c}) done — rad_fraction: {tile_pupil.rad_fraction.item():.6f}")
+
+def make_callbacks(
+    output_dir: Path,
+) -> tuple[list[dict[str, Any]], TileCompleteCallback, BatchCompleteCallback]:
+    batch_metrics_records: list[dict[str, Any]] = []
+
+    def on_tile_complete(
+        r: int,
+        c: int,
+        obj: torch.Tensor,
+        tile_pupil: ZernikeParams,
+        _metrics: dict[str, Any],
+    ) -> None:
+        save_tensor(obj, output_dir / f"tile_{r}_{c}_object.npy")
+        pupil_tensor = make_zernike_pupil(
+            tile_pupil.phase_coeffs,
+            tile_pupil.amp_coeffs,
+            tile_pupil.basis,
+            tile_pupil.rad_fraction,
+        )
+        save_tensor(pupil_tensor, output_dir / f"tile_{r}_{c}_pupil.npy")
+
+        print(f"Tile ({r},{c}) done; rad_fraction: {tile_pupil.rad_fraction.item():.6f}")
+
+    def on_batch_complete(
+        batch_tiles: list[tuple[int, int]],
+        _pupil: ZernikeParams,
+        metrics: dict[str, Any],
+    ) -> None:
+        batch_metrics_records.append({
+            "tiles": list(batch_tiles),
+            "metrics": metrics,
+        })
+
+    return batch_metrics_records, on_tile_complete, on_batch_complete
 
 
-def on_batch_complete(batch_tiles: list[tuple[int, int]], _: ZernikeParams, metrics: dict[str, Any]) -> None:
-    batch_metrics_records.append({
-        "tiles": list(batch_tiles),
-        "metrics": metrics,
-    })
+def main() -> None:
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    study = PtychStudy.from_disk(BASE_DIR)
+    captures = prepare_captures(
+        study,
+        n_captures=N_CAPTURES,
+        crop_size=CROP_SIZE,
+    )
+    pupil = build_initial_pupil(
+        study,
+        roi_size=ROI_SIZE,
+        upsample_ratio=UPSAMPLE_RATIO,
+        na=NA,
+        num_phase_terms=NUM_PHASE_TERMS,
+        num_amp_terms=NUM_AMP_TERMS,
+    )
+    batch_metrics_records, on_tile_complete, on_batch_complete = make_callbacks(OUTPUT_DIR)
+
+    result = solve_tiled(
+        captures,
+        study.kx_batch[:N_CAPTURES],
+        study.ky_batch[:N_CAPTURES],
+        pupil,
+        roi_size=ROI_SIZE,
+        upsample_ratio=UPSAMPLE_RATIO,
+        epochs=EPOCHS,
+        torch_device=TORCH_DEVICE,
+        on_tile_complete=on_tile_complete,
+        on_batch_complete=on_batch_complete,
+        tile_batch_size=TILE_BATCH_SIZE,
+    )
+
+    save_metrics_summary(
+        batch_metrics_records,
+        path=OUTPUT_DIR / "reconstruction_metrics.png",
+    )
+
+    save_tensor(result, OUTPUT_DIR / "stitched_object.npy")
+    save_preview_png(result, OUTPUT_DIR / "stitched_object.png", mode="intensity")
+    print(f"Stitched result shape: {result.shape}")
 
 
-result = solve_tiled(
-    captures,
-    study.kx_batch[:n_captures],
-    study.ky_batch[:n_captures],
-    pupil,
-    roi_size=roi_size,
-    upsample_ratio=upsample_ratio,
-    torch_device="mps",
-    on_tile_complete=on_tile_complete,
-    on_batch_complete=on_batch_complete,
-    tile_batch_size=4,
-)
-
-save_metrics_summary(
-    batch_metrics_records,
-    n_rows=n_rows,
-    n_cols=n_cols,
-    path=f"{OUTPUT_DIR}/reconstruction_metrics.png",
-)
-
-# Save stitched result
-save_tensor(result, f"{OUTPUT_DIR}/stitched_object.npy")
-save_preview_png(result, f"{OUTPUT_DIR}/stitched_object.png", mode="intensity")
-print(f"Stitched result shape: {result.shape}")
+if __name__ == "__main__":
+    main()
