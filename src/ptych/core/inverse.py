@@ -8,8 +8,6 @@ from jaxtyping import Float, Complex
 from ptych.core.forward import forward_model
 from ptych.core.pupil import ZernikeParams, make_zernike_pupil
 
-eps = 1e-8
-
 def solve_inverse(
     captures: Float[torch.Tensor, "T B n n"], # [T, B, n, n] float on (0, 1)
     object: Complex[torch.Tensor, "T N N"], # [T, N, N] complex on (0, 1)
@@ -53,7 +51,7 @@ def solve_inverse(
     learned_tensors.append({'params': object_amp, 'lr': 0.001})
     learned_tensors.append({'params': object_phase, 'lr': 0.001})
 
-    intensity_scale = torch.nn.Parameter(torch.ones(T, device=torch_device))  # [T]
+    intensity_scale = torch.ones(B, device=torch_device).requires_grad_(True)  # [B]
     learned_tensors.append({'params': intensity_scale, 'lr': 0.001})
 
     # Handle pupil setup (Zernike vs raw tensor)
@@ -127,8 +125,8 @@ def solve_inverse(
         ).reshape(T, B, n, n)  # [T, B, n, n]
 
         # Compute loss across all captures
-        scaled_pred = intensity_scale[:, None, None, None] * downsampled  # [T, B, n, n]
-        total_loss = F.l1_loss(torch.sqrt(scaled_pred + eps), torch.sqrt(captures + eps))
+        scaled_pred = intensity_scale[None, :, None, None] * downsampled  # [T, B, n, n]
+        total_loss = F.l1_loss(torch.sqrt(scaled_pred + 1e-8), torch.sqrt(captures + 1e-8))
 
         # Backward pass
         optimizer.zero_grad()
@@ -146,13 +144,10 @@ def solve_inverse(
     # Transfer loss history to CPU in one bulk operation
     metrics: dict[str, list[float]] = {
         'loss': loss_accumulator.cpu().tolist(),
-        'lr': []
     }
 
     # Reconstruct final complex object from optimized amplitude and phase
     object_final = object_amp.detach() * torch.exp(1j * object_phase.detach())  # [T, N, N]
-
-    print(f"Final intensity scale: {intensity_scale.detach().cpu().tolist()}")
 
     if working_zernike is not None:
         return (

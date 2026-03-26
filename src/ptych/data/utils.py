@@ -1,7 +1,10 @@
 import math
-import torch
+import warnings
 
-from ptych.data.types import LedPosition
+import torch
+from jaxtyping import Float
+
+from ptych.data.types import Capture, LedPosition, StudyManifest
 
 def get_default_device() -> torch.device:
     if torch.cuda.is_available():
@@ -28,12 +31,65 @@ def compute_k_camera(
     Returns:
         (kx_camera, ky_camera): normalized to camera grid, dimensionless
     """
-    theta_x = math.atan2(led_position.x, led_position.z)
-    theta_y = math.atan2(led_position.y, led_position.z)
+    r = math.sqrt(led_position.x**2 + led_position.y**2 + led_position.z**2)
+    sin_x = led_position.x / r
+    sin_y = led_position.y / r
 
     sample_pixel = camera_pixel_size / magnification
 
-    kx_camera = math.sin(theta_x) * sample_pixel / wavelength
-    ky_camera = math.sin(theta_y) * sample_pixel / wavelength
+    kx_camera = sin_x * sample_pixel / wavelength
+    ky_camera = sin_y * sample_pixel / wavelength
 
     return kx_camera, ky_camera
+
+
+def prepare_captures(
+    manifest: StudyManifest,
+) -> tuple[list[Capture], float, Float[torch.Tensor, "B"], Float[torch.Tensor, "B"]]:
+    """Filter, validate, and compute k-vectors for a manifest's captures.
+
+    Filters out darkfield captures (no LED positions), asserts single wavelength
+    and single LED per capture, then computes camera-normalized k-vectors.
+
+    Returns:
+        (valid_captures, wavelength, kx_batch, ky_batch)
+    """
+    # Filter out darkfield captures
+    valid_captures: list[Capture] = []
+    for i, cap in enumerate(manifest.captures):
+        if not cap.led_positions:
+            warnings.warn(
+                f"Capture {i} ({cap.filename}) is a darkfield image and will be ignored.",
+                stacklevel=2,
+            )
+        else:
+            valid_captures.append(cap)
+
+    # Assert single wavelength
+    wavelengths = list({cap.wavelength for cap in valid_captures})
+    assert len(wavelengths) == 1, (
+        f"All captures must have the same wavelength. Found: {wavelengths}"
+    )
+    wavelength = wavelengths[0]
+
+    # Assert single LED per capture
+    for i, cap in enumerate(valid_captures):
+        assert len(cap.led_positions) == 1, (
+            f"Multi-LED captures not supported. "
+            f"Capture {i} ({cap.filename}) has {len(cap.led_positions)} LEDs."
+        )
+
+    # Compute k-vectors
+    k_vectors = [
+        compute_k_camera(
+            cap.led_positions[0],
+            wavelength,
+            manifest.sensor_pixel_size,
+            manifest.magnification,
+        )
+        for cap in valid_captures
+    ]
+    kx_batch = torch.tensor([kx for kx, _ in k_vectors])
+    ky_batch = torch.tensor([ky for _, ky in k_vectors])
+
+    return valid_captures, wavelength, kx_batch, ky_batch

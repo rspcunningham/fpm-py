@@ -8,20 +8,16 @@ from jaxtyping import Float, Complex
 
 from ptych.core.inverse import solve_inverse
 from ptych.core.pupil import ZernikeParams, precompute_zernike_basis
-from ptych.data.study import PtychStudy
 
-eps = 1e-8
 
 
 def solve_tiled(
-    study: PtychStudy,
+    captures: Float[torch.Tensor, "B H W"],
+    kx_batch: Float[torch.Tensor, "B"],
+    ky_batch: Float[torch.Tensor, "B"],
+    pupil: ZernikeParams,
     roi_size: int,
     upsample_ratio: int = 4,
-    n_captures: int | None = None,
-    preprocess: Callable[[Float[torch.Tensor, "B n n"]], Float[torch.Tensor, "B n n"]] | None = None,
-    num_phase_terms: int = 10,
-    num_amp_terms: int = 10,
-    rad_fraction: float = 0.047,
     torch_device: str | torch.device = "cpu",
     on_tile_complete: Callable[[int, int, torch.Tensor, ZernikeParams, dict[str, list[float]]], None] | None = None,
     tile_batch_size: int = 1,
@@ -30,15 +26,12 @@ def solve_tiled(
     """Tile a full capture, reconstruct each tile independently, and stitch results.
 
     Args:
-        study: PtychStudy containing captures and k-vectors.
+        captures: Capture intensities [B, H, W].
+        kx_batch: Normalized k-vectors in x [B].
+        ky_batch: Normalized k-vectors in y [B].
+        pupil: Initial ZernikeParams (re-initialized per tile batch from these values).
         roi_size: Size of each square tile (pixels).
         upsample_ratio: Super-resolution factor per tile.
-        n_captures: Number of captures to use (None = all).
-        preprocess: Optional transform applied to captures before tiling
-            (e.g. Bayer demosaic). Expected to return a new tensor.
-        num_phase_terms: Zernike phase terms per tile.
-        num_amp_terms: Zernike amplitude terms per tile.
-        rad_fraction: Initial pupil radius fraction.
         torch_device: Device for solve_inverse.
         on_tile_complete: Callback(row, col, object, pupil, metrics) after each tile.
         tile_batch_size: Number of tiles to solve simultaneously.
@@ -47,22 +40,8 @@ def solve_tiled(
     Returns:
         Stitched complex object at upsampled resolution.
     """
-    # 1. Preprocess or clone captures
-    if preprocess is not None:
-        captures = preprocess(study.captures)
-    else:
-        captures = study.captures.clone()
-
-    # 2. Slice to n_captures
-    kx = study.kx_batch
-    ky = study.ky_batch
-    if n_captures is not None:
-        captures = captures[:n_captures]
-        kx = kx[:n_captures]
-        ky = ky[:n_captures]
-
-    # 3. Normalize
-    captures = captures / captures.max()
+    kx = kx_batch
+    ky = ky_batch
 
     # 4. Compute grid
     _, H, W = captures.shape
@@ -84,12 +63,12 @@ def solve_tiled(
             stacklevel=2,
         )
 
-    # 5. Precompute zernike basis once (shared across all tiles)
+    # 5. Precompute zernike basis at tile resolution (shared across all tiles)
     upsampled_size = roi_size * upsample_ratio
     basis = precompute_zernike_basis(
         upsampled_size,
-        num_phase_terms=num_phase_terms,
-        num_amp_terms=num_amp_terms,
+        num_phase_terms=pupil.basis.num_phase_terms,
+        num_amp_terms=pupil.basis.num_amp_terms,
     )
 
     # 6. Allocate output
@@ -118,22 +97,24 @@ def solve_tiled(
                 scale_factor=upsample_ratio,
                 mode="nearest",
             ).squeeze()
-            init_amp = torch.sqrt(init_amp + eps)
+            init_amp = torch.sqrt(init_amp + 1e-8)
             init_phase = torch.zeros_like(init_amp)
             batch_objects.append(init_amp * torch.exp(1j * init_phase))
         batch_objects_tensor = torch.stack(batch_objects)  # [T, N, N]
 
-        # c. Fresh ZernikeParams (shared across batch)
-        phase_coeffs = torch.zeros(basis.num_phase_terms)
-        amp_coeffs = torch.zeros(basis.num_amp_terms)
-        amp_coeffs[0] = 1.0
-        pupil = ZernikeParams(phase_coeffs, amp_coeffs, basis, torch.tensor(rad_fraction))
+        # c. Fresh ZernikeParams from initial values (shared across batch)
+        tile_pupil = ZernikeParams(
+            pupil.phase_coeffs.clone().detach(),
+            pupil.amp_coeffs.clone().detach(),
+            basis,
+            pupil.rad_fraction.clone().detach(),
+        )
 
         # d. Solve batch
         result_objects, solved_pupil, metrics = solve_inverse(
             batch_captures,
             batch_objects_tensor,
-            pupil,
+            tile_pupil,
             kx,
             ky,
             torch_device=torch_device,
@@ -144,9 +125,9 @@ def solve_tiled(
         # e. Unpack into output grid
         for i, (r, c) in enumerate(batch):
             obj_cpu = result_objects[i].cpu()
-            or0 = r * upsampled_size
-            oc0 = c * upsampled_size
-            output[or0:or0 + upsampled_size, oc0:oc0 + upsampled_size] = obj_cpu
+            out_row = r * upsampled_size
+            out_col = c * upsampled_size
+            output[out_row:out_row + upsampled_size, out_col:out_col + upsampled_size] = obj_cpu
 
             # f. Callback
             if on_tile_complete is not None:

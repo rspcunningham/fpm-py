@@ -1,6 +1,5 @@
 from pathlib import Path
 import json
-import warnings
 from typing import cast
 
 import numpy as np
@@ -8,23 +7,23 @@ import numpy.typing as npt
 import torch
 from jaxtyping import Float
 
-from ptych.data.types import Capture, StudyManifest
+from ptych.data.types import StudyManifest
 from ptych.data.parse import parse_manifest
-from ptych.data.utils import compute_k_camera
+from ptych.data.utils import prepare_captures
 
 
 class PtychStudy:
     manifest: StudyManifest
-    captures: Float[torch.Tensor, "B n n"] # [B, n, n] float on (0, 1)
-    kx_batch: Float[torch.Tensor, "B"] # [B] float on (-0.5, 0.5) (normalized for an n * n grid!)
-    ky_batch: Float[torch.Tensor, "B"] # [B] float on (-0.5, 0.5) (normalized for an n * n grid!)
+    captures: Float[torch.Tensor, "B n n"] # [B, n, n] float intensities
+    kx_batch: Float[torch.Tensor, "B"] # [B] normalized to camera grid (cycles per sample pixel)
+    ky_batch: Float[torch.Tensor, "B"] # [B] normalized to camera grid (cycles per sample pixel)
 
     def __init__(
         self,
         manifest: StudyManifest,
-        captures: Float[torch.Tensor, "B n n"], # [B, n, n] float on (0, 1)
-        kx_batch: Float[torch.Tensor, "B"], # [B] float on (-0.5, 0.5) (normalized for an n * n grid!)
-        ky_batch: Float[torch.Tensor, "B"], # [B] float on (-0.5, 0.5) (normalized for an n * n grid!)
+        captures: Float[torch.Tensor, "B n n"],
+        kx_batch: Float[torch.Tensor, "B"],
+        ky_batch: Float[torch.Tensor, "B"],
     ):
         self.manifest = manifest
         self.captures = captures
@@ -32,7 +31,7 @@ class PtychStudy:
         self.ky_batch = ky_batch
 
     @classmethod
-    def from_disk(cls, dir_path: str | Path, _normalize_by_exposure: bool = False) -> 'PtychStudy':
+    def from_disk(cls, dir_path: str | Path) -> 'PtychStudy':
         dir_path = Path(dir_path)
 
         # Load and parse manifest
@@ -40,30 +39,7 @@ class PtychStudy:
         with open(manifest_path) as f:
             manifest = parse_manifest(cast(dict[str, object], json.load(f)))
 
-        # Filter out darkfield captures (empty led_positions)
-        valid_captures: list[Capture] = []
-        for i, cap in enumerate(manifest.captures):
-            if not cap.led_positions:
-                warnings.warn(
-                    f"Capture {i} ({cap.filename}) is a darkfield image. Darkfield processing is not supported yet so this image will be ignored."
-                )
-            else:
-                valid_captures.append(cap)
-
-        # === Temporary assertions (remove when edge cases are supported) ===
-        # Assert all captures have the same wavelength
-        wavelengths = [cap.wavelength for cap in valid_captures]
-        assert len(set(wavelengths)) == 1, (
-            f"All captures must have the same wavelength. Found: {set(wavelengths)}"
-        )
-        wavelength = wavelengths[0]
-        # Assert all captures have exactly one LED position
-        for i, cap in enumerate(valid_captures):
-            assert len(cap.led_positions) == 1, (
-                f"Multi-LED captures are not supported yet. "
-                f"Capture {i} ({cap.filename}) has {len(cap.led_positions)} LED positions."
-            )
-        # === End temporary assertions ===
+        valid_captures, _, kx_batch, ky_batch = prepare_captures(manifest)
 
         # Load capture images from captures/ subdirectory
         images: list[npt.NDArray[np.float64]] = []
@@ -82,22 +58,8 @@ class PtychStudy:
             )
             images.append(img)
 
-        # Stack into tensor [B, n, n] and normalize to [0, 1]
+        # Stack into tensor [B, n, n]
         captures_tensor = torch.from_numpy(np.stack(images, axis=0)).float()
-        # / 65535.0
-
-        # Compute k-vectors (using first LED position from each capture)
-        k_vectors = [
-            compute_k_camera(
-                cap.led_positions[0],
-                wavelength,
-                manifest.sensor_pixel_size,
-                manifest.magnification,
-            )
-            for cap in valid_captures
-        ]
-        kx_batch = torch.tensor([kx for kx, _ in k_vectors])
-        ky_batch = torch.tensor([ky for _, ky in k_vectors])
 
         return cls(
             manifest=manifest,

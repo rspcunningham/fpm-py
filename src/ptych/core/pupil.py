@@ -20,8 +20,8 @@ class ZernikeBasis:
     rho_pixels: Float[Tensor, "N N"]
     theta: Float[Tensor, "N N"]
     angular_parts: Float[Tensor, "max_terms N N"]
-    poly_coeffs: Float[Tensor, "T max_k"]
-    poly_powers: Float[Tensor, "T max_k"]
+    poly_coeffs: Float[Tensor, "max_terms max_k"]
+    poly_powers: Float[Tensor, "max_terms max_k"]
     size: int
     num_phase_terms: int
     num_amp_terms: int
@@ -232,7 +232,6 @@ def make_zernike_pupil(
     basis: ZernikeBasis,
     rad_fraction: Tensor | float,
     use_softplus: bool = True,
-    mask_sharpness: float = 50.0,
 ) -> Complex[Tensor, "N N"]:
     """Generate complex pupil from Zernike coefficients with differentiable radius.
 
@@ -244,7 +243,6 @@ def make_zernike_pupil(
         use_softplus: If True, apply softplus to ensure non-negative amplitude
             (useful for optimization). If False, use raw linear combination
             (useful for ground-truth generation with exact amplitude control).
-        mask_sharpness: Steepness of soft mask sigmoid (higher = sharper edge)
 
     Returns:
         Complex pupil tensor [N, N] with DC at (0, 0) in FFT-native coords
@@ -257,14 +255,16 @@ def make_zernike_pupil(
     radius_pixels = rad_fraction * basis.size
     rho_norm = basis.rho_pixels / radius_pixels
 
-    # Soft mask for gradient flow (sigmoid centered at rho_norm=1)
-    mask = torch.sigmoid((1.0 - rho_norm) * mask_sharpness)
+    # Clamp to unit disk for polynomial evaluation (Zernike polynomials are
+    # only valid on [0, 1] and diverge outside)
+    rho_clamped = torch.clamp(rho_norm, max=1.0)
+    mask = torch.sigmoid((1.0 - rho_norm) * 20.0)
 
     # Vectorized evaluation of all Zernike terms at once
     num_phase = len(phase_coeffs)
     num_amp = len(amp_coeffs)
     max_terms = max(num_phase, num_amp)
-    rho_powered = rho_norm[None, None] ** basis.poly_powers[:max_terms, :, None, None]  # [T, K, N, N]
+    rho_powered = rho_clamped[None, None] ** basis.poly_powers[:max_terms, :, None, None]  # [T, K, N, N]
     radial_all = (basis.poly_coeffs[:max_terms, :, None, None] * rho_powered).sum(dim=1)  # [T, N, N]
     zernike_all = radial_all * basis.angular_parts[:max_terms]  # [T, N, N]
 
@@ -272,8 +272,7 @@ def make_zernike_pupil(
     amp_raw = torch.einsum("i,ihw->hw", amp_coeffs, zernike_all[:num_amp])
     amplitude = torch.nn.functional.softplus(amp_raw) if use_softplus else amp_raw
 
-    # Construct complex pupil with soft mask
-    pupil = amplitude * torch.exp(1j * phase) * mask
+    pupil = amplitude * torch.exp(1j * phase)
 
     return pupil
 
@@ -330,20 +329,25 @@ def make_ideal_pupil(
     sensor_pixel_size_m: float,
     magnification: float,
     downsample_ratio: int,
-    device=None,
-    dtype=torch.complex64,
-) -> torch.Tensor:
-    # Full-resolution object-plane pixel size
+    num_phase_terms: int = 1,
+    num_amp_terms: int = 1,
+    device: torch.device | str | None = None,
+) -> ZernikeParams:
+    """Create an ideal (aberration-free) Zernike pupil parameterization.
+
+    Computes the pupil radius from NA and optical parameters, then returns
+    ZernikeParams with uniform amplitude (piston only) and zero phase.
+    Can be passed directly to solve_inverse for learning, or evaluated
+    via make_zernike_pupil to get a tensor.
+    """
     dx_obj = sensor_pixel_size_m / (magnification * downsample_ratio)
+    fc = NA / wavelength_m  # coherent cutoff in cycles/meter
+    rad_fraction_val = fc * dx_obj  # cutoff as fraction of Fourier grid width
 
-    # Fourier coordinates in cycles / meter, unshifted, DC at index 0
-    fx = torch.fft.fftfreq(N, d=dx_obj, device=device)
-    fy = torch.fft.fftfreq(N, d=dx_obj, device=device)
-    fy_grid, fx_grid = torch.meshgrid(fy, fx, indexing="ij")
+    _device = device or "cpu"
+    basis = precompute_zernike_basis(N, num_phase_terms=num_phase_terms, num_amp_terms=num_amp_terms, device=_device)
+    phase_coeffs = init_phase_coeffs(num_phase_terms, device=_device, requires_grad=False)
+    amp_coeffs = init_amp_coeffs(num_amp_terms, device=_device, requires_grad=False)
+    rad_fraction = init_rad_fraction(rad_fraction_val, device=_device, requires_grad=False)
 
-    fc = NA / wavelength_m  # coherent cutoff, cycles / meter
-
-    mask = (fx_grid**2 + fy_grid**2 <= fc**2)
-    pupil = mask.to(dtype)
-
-    return pupil
+    return ZernikeParams(phase_coeffs, amp_coeffs, basis, rad_fraction)

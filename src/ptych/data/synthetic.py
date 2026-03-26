@@ -8,7 +8,7 @@ from jaxtyping import Complex
 
 from ptych.core.synthetic import synthesize_captures
 from ptych.data.parse import parse_manifest
-from ptych.data.utils import compute_k_camera
+from ptych.data.utils import prepare_captures
 
 def generate_synthetic_study(
     dir_path: str | Path,
@@ -25,7 +25,7 @@ def generate_synthetic_study(
         dir_path: Directory containing info.json
         object_tensor: Complex object tensor [N, N]
         pupil_tensor: Complex pupil tensor [N, N]
-        downsample_ratio: Factor to downsample by (N / n)
+        (downsample ratio is derived from object_tensor size vs manifest capture_dimensions)
     """
     dir_path = Path(dir_path)
 
@@ -34,23 +34,7 @@ def generate_synthetic_study(
     with open(manifest_path) as f:
         manifest = parse_manifest(cast(dict[str, object], json.load(f)))
 
-    # Filter out darkfield captures
-    valid_captures = [cap for cap in manifest.captures if cap.led_positions]
-
-    # === Temporary assertions (matching study.py) ===
-    wavelengths = [cap.wavelength for cap in valid_captures]
-    assert len(set(wavelengths)) == 1, (
-        f"All captures must have the same wavelength. Found: {set(wavelengths)}"
-    )
-    wavelength = wavelengths[0]
-
-    for i, cap in enumerate(valid_captures):
-        assert len(cap.led_positions) == 1, (
-            f"Multi-LED captures are not supported yet. "
-            f"Capture {i} ({cap.filename}) has {len(cap.led_positions)} LED positions."
-        )
-
-    # === End temporary assertions ===
+    valid_captures, _, kx_batch, ky_batch = prepare_captures(manifest)
 
     # Get the downsample ratio from the ideal object and target capture size
     width, height = manifest.capture_dimensions.width, manifest.capture_dimensions.height
@@ -60,19 +44,6 @@ def generate_synthetic_study(
         raise ValueError(f"Downsample ratios in x and y do not match: {ratio_x} vs {ratio_y}. Please ensure the desired capture size is the same aspect ratio as the object tensor.")
     if ratio_x != int(ratio_x):
         raise ValueError(f"Downsample ratio is not an integer: {ratio_x}. Please ensure the desired capture size is an integer fraction of the object tensor size.")
-
-    # Compute k-vectors from LED positions
-    k_vectors = [
-        compute_k_camera(
-            cap.led_positions[0],
-            wavelength,
-            manifest.sensor_pixel_size,
-            manifest.magnification,
-        )
-        for cap in valid_captures
-    ]
-    kx_batch = torch.tensor([kx for kx, _ in k_vectors])
-    ky_batch = torch.tensor([ky for _, ky in k_vectors])
 
     # Generate synthetic captures
     captures = synthesize_captures(

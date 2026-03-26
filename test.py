@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from ptych import solve_tiled, PtychStudy
-from ptych.core.pupil import ZernikeParams, make_zernike_pupil
+from ptych.core.pupil import ZernikeParams, make_zernike_pupil, make_ideal_pupil
 from interpolation import interpolate_green
 
 BASE_DIR = "./tmp/6456b6d0-3b2a-4fef-a734-cc64d68bd4ac"
@@ -45,11 +45,29 @@ def on_tile_complete(r, c, obj, pupil: ZernikeParams, metrics):
     plt.close()
 
 
+captures = interpolate_green(study.captures[:37])
+captures = captures / captures.max()
+
+upsample_ratio = 4
+N = 128 * upsample_ratio
+pupil = make_ideal_pupil(
+    N=N,
+    NA=0.13,
+    wavelength_m=study.manifest.captures[0].wavelength,
+    sensor_pixel_size_m=study.manifest.sensor_pixel_size,
+    magnification=study.manifest.magnification,
+    downsample_ratio=upsample_ratio,
+    num_phase_terms=10,
+    num_amp_terms=10,
+)
+
 result = solve_tiled(
-    study,
+    captures,
+    study.kx_batch[:37],
+    study.ky_batch[:37],
+    pupil,
     roi_size=128,
-    n_captures=37,
-    preprocess=interpolate_green,
+    upsample_ratio=upsample_ratio,
     torch_device="mps",
     on_tile_complete=on_tile_complete,
     tile_batch_size=4,

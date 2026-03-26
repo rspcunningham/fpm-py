@@ -1,84 +1,97 @@
-import torch
+import os
+
 import numpy as np
-from PIL import Image
+import torch
 import seaborn as sns
+from PIL import Image
 from matplotlib import pyplot as plt
 
-from ptych import solve_inverse, PtychStudy
-from ptych.core.pupil import precompute_zernike_basis, make_zernike_pupil, ZernikeParams
+from ptych import solve_tiled, PtychStudy
+from ptych.core.pupil import make_ideal_pupil, make_zernike_pupil, ZernikeParams
+from interpolation import interpolate_green
 
-BASE_DIR = "./tmp/new/synthetic"
+#BASE_DIR = "./demo/synthetic"
+BASE_DIR = "./demo/real"
+OUTPUT_DIR = f"{BASE_DIR}/output"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 study = PtychStudy.from_disk(BASE_DIR)
 
-eps = 1e-8
+# Center-crop to 256x256 for quick validation (2x2 grid of 128 tiles)
+roi_size = 128
+crop_size = 256
+_, h, w = study.captures.shape
+sh, sw = (h - crop_size) // 2, (w - crop_size) // 2
+# Use first 37 captures (3 rings, ~8.92°) — spotlight stays in periphery, not in center crop
+n_captures = 37
+captures = study.captures[:n_captures, sh:sh + crop_size, sw:sw + crop_size]
+captures = interpolate_green(captures)
+captures = captures / captures.max()
 
-# Initialize object and pupil with upsampled dimensions
+# Initialize pupil from NA and optical parameters
 upsample_ratio = 4
-dims = study.manifest.capture_dimensions
+N = roi_size * upsample_ratio
+pupil = make_ideal_pupil(
+    N=N,
+    NA=0.13,
+    wavelength_m=study.manifest.captures[0].wavelength,
+    sensor_pixel_size_m=study.manifest.sensor_pixel_size,
+    magnification=study.manifest.magnification,
+    downsample_ratio=upsample_ratio,
+    num_phase_terms=20,
+    num_amp_terms=20,
+)
 
-init_amp = torch.nn.functional.interpolate(
-    study.captures[0:1, :, :].unsqueeze(1),  # [B, n, n]
-    scale_factor=upsample_ratio,
-    mode='bilinear'
-).squeeze()  #
 
-init_amp = torch.sqrt(init_amp + eps)  # Convert intensity to amplitude
-init_phase = torch.zeros_like(init_amp)  # or small random noise
+def save_tensor(tensor: torch.Tensor, path: str):
+    np.save(path, tensor.cpu().numpy())
 
-object_tensor = init_amp * torch.exp(1j * init_phase)
 
-# Initialize pupil using Zernike basis
-N = dims.height * upsample_ratio
-basis = precompute_zernike_basis(N, num_phase_terms=3, num_amp_terms=3)
-phase_coeffs = torch.zeros(basis.num_phase_terms)
-amp_coeffs = torch.zeros(basis.num_amp_terms)
-amp_coeffs[0] = 1.0  # Piston = uniform amplitude
-rad_fraction = torch.tensor(0.15)  # Learnable radius fraction
+def save_png(tensor: torch.Tensor, path: str):
+    arr = tensor.abs().cpu().numpy() ** 2  # intensity = |field|²
+    arr_u8 = np.asarray(arr / arr.max() * 255, dtype=np.uint8)
+    Image.fromarray(arr_u8).save(path)
 
-pupil = ZernikeParams(phase_coeffs, amp_coeffs, basis, rad_fraction)
 
-object, pupil, metrics = solve_inverse(
-    study.captures[None],  # [1, B, n, n]
-    object_tensor[None],   # [1, N, N]
+def on_tile_complete(r: int, c: int, obj: torch.Tensor, tile_pupil: ZernikeParams, metrics: dict[str, list[float]]):
+    # Save tensors
+    save_tensor(obj, f"{OUTPUT_DIR}/tile_{r}_{c}_object.npy")
+    pupil_tensor = make_zernike_pupil(tile_pupil.phase_coeffs, tile_pupil.amp_coeffs, tile_pupil.basis, tile_pupil.rad_fraction)
+    save_tensor(pupil_tensor, f"{OUTPUT_DIR}/tile_{r}_{c}_pupil.npy")
+
+    # Save PNGs
+    save_png(obj, f"{OUTPUT_DIR}/tile_{r}_{c}_object.png")
+    save_png(pupil_tensor, f"{OUTPUT_DIR}/tile_{r}_{c}_pupil.png")
+
+    print(f"Tile ({r},{c}) done — final loss: {metrics['loss'][-1]:.6f}, rad_fraction: {tile_pupil.rad_fraction.item():.6f}")
+
+    # Save loss curve
+    sns.set_theme(style="darkgrid")
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)  # pyright: ignore[reportAny]
+    epochs = range(len(metrics['loss']))
+    sns.lineplot(x=list(epochs), y=metrics['loss'], ax=ax1)  # pyright: ignore[reportAny]
+    ax1.set_ylabel('Loss')  # pyright: ignore[reportAny]
+    ax1.set_title(f'Tile ({r},{c}) Training Metrics')  # pyright: ignore[reportAny]
+    sns.lineplot(x=list(epochs), y=np.log(metrics['loss']), ax=ax2)  # pyright: ignore[reportAny]
+    ax2.set_ylabel('Log Loss')  # pyright: ignore[reportAny]
+    plt.tight_layout()
+    plt.savefig(f"{OUTPUT_DIR}/tile_{r}_{c}_metrics.png", dpi=150)
+    plt.close()
+
+
+result = solve_tiled(
+    captures,
+    study.kx_batch[:n_captures],
+    study.ky_batch[:n_captures],
     pupil,
-    study.kx_batch,
-    study.ky_batch,
+    roi_size=roi_size,
+    upsample_ratio=upsample_ratio,
     torch_device="mps",
+    on_tile_complete=on_tile_complete,
+    tile_batch_size=4,
 )
-object = object.squeeze(0)  # [N, N]
 
-# Save object result as PNG
-object_amplitude: np.ndarray[tuple[int, int], np.dtype[np.float32]] = object.abs().cpu().numpy()
-# Normalize to 0-255 range
-object_amplitude_u8 = np.asarray(
-    object_amplitude / object_amplitude.max() * 255, dtype=np.uint8
-)
-Image.fromarray(object_amplitude_u8).save(f"{BASE_DIR}/object_result.png")
-
-# Save pupil result as PNG
-assert isinstance(pupil, ZernikeParams)
-pupil_tensor = make_zernike_pupil(pupil.phase_coeffs, pupil.amp_coeffs, pupil.basis, pupil.rad_fraction)
-print(f"Learned rad_fraction: {pupil.rad_fraction.item():.6f}")
-pupil_amplitude = pupil_tensor.abs().cpu().numpy()
-pupil_amplitude_u8 = np.asarray(
-    pupil_amplitude / pupil_amplitude.max() * 255, dtype=np.uint8
-)
-Image.fromarray(pupil_amplitude_u8).save(f"{BASE_DIR}/pupil_result.png")
-
-# Plot and save metrics
-sns.set_theme(style="darkgrid")
-fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 10), sharex=True) # pyright: ignore[reportAny]
-
-epochs = range(len(metrics['loss']))
-
-sns.lineplot(x=list(epochs), y=metrics['loss'], ax=ax1) # pyright: ignore[reportAny]
-ax1.set_ylabel('Loss') # pyright: ignore[reportAny]
-ax1.set_title('Training Metrics') # pyright: ignore[reportAny]
-
-sns.lineplot(x=list(epochs), y=np.log(metrics['loss']), ax=ax2) # pyright: ignore[reportAny]
-ax2.set_ylabel('Log Loss') # pyright: ignore[reportAny]
-
-plt.tight_layout()
-plt.savefig(f"{BASE_DIR}/metrics.png", dpi=150)
-plt.close()
+# Save stitched result
+save_tensor(result, f"{OUTPUT_DIR}/stitched_object.npy")
+save_png(result, f"{OUTPUT_DIR}/stitched_object.png")
+print(f"Stitched result shape: {result.shape}")
