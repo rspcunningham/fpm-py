@@ -8,7 +8,7 @@ This file now tracks experiment status and the remaining scaling questions for `
 - Test 2: complete
 - Test 3: complete
 - Test 5: complete
-- Test 4: pending
+- Test 4: complete
 
 ## Test 1: Fixed field of view, vary tile size
 
@@ -121,6 +121,7 @@ Artifacts:
 Notes:
 - The `tile_batch_size=4` point was reused from Test 2 because it had identical geometry.
 - This test confirmed that batch-count overhead matters materially at larger tile grids.
+- During an active run, `mactop` showed low CPU usage, negligible disk activity, zero swap, and GPU near 99% busy. That is consistent with a GPU/backend-limited regime rather than a CPU- or I/O-bound regime.
 
 ## Test 5: Fixed geometry, vary upsample ratio
 
@@ -167,37 +168,64 @@ Interpretation:
 
 ## Test 4: Higher learning rate, fewer epochs
 
-Status: pending
+Status: complete
 
 Question:
 - Can a more aggressive optimizer setup recover similar reconstruction quality at a lower epoch budget?
 
-Planned approach:
-- Keep the reconstruction geometry fixed.
-- Reduce `EPOCHS`.
-- Increase learning rates in `src/ptych/core/inverse.py`.
-- Keep separate learning rates for object and pupil parameters.
-- Compare final loss, runtime, and qualitative reconstruction quality.
+Measured setup:
+- `CROP_SIZE=256`
+- `ROI_SIZE=128`
+- `UPSAMPLE_RATIO=4`
+- `tile_batch_size=4`
+- `N_CAPTURES=61`
+- `device=mps`
 
-Suggested initial sweep:
-- Object learning rate in `{1e-3, 3e-3, 1e-2}`
-- Pupil learning rate about `10x` lower
+Measured sweep:
+- `250`-epoch runs:
+  - constant LR with object/pupil pairs `{1e-3,1e-4}`, `{3e-3,3e-4}`, `{1e-2,1e-3}`
+  - cosine LR with object/pupil pairs `{3e-3,3e-4}`, `{1e-2,1e-3}`
+- focused `150`-epoch follow-up:
+  - constant LR with object/pupil pair `{1e-2,1e-3}`
+  - cosine LR with object/pupil pair `{1e-2,1e-3}`
 
-Why it matters:
-- If Test 3 improves batching efficiency and Test 5 identifies a worthwhile `UPSAMPLE_RATIO`, Test 4 is the next lever for reducing runtime.
-- `epochs` is a direct linear cost multiplier, so this is likely one of the strongest remaining speed levers.
+Measured results:
+- historical reference, `1000` epochs, old default constant LR: `164.68s`, final loss `0.008135`
+- `250` epochs, constant `1e-3 / 1e-4`: `40.53s`, final loss `0.036665`
+- `250` epochs, constant `3e-3 / 3e-4`: `40.61s`, final loss `0.009446`
+- `250` epochs, constant `1e-2 / 1e-3`: `41.15s`, final loss `0.007293`
+- `250` epochs, cosine `3e-3 / 3e-4`: `41.31s`, final loss `0.018312`
+- `250` epochs, cosine `1e-2 / 1e-3`: `41.49s`, final loss `0.007657`
+- `150` epochs, constant `1e-2 / 1e-3`: `24.65s`, final loss `0.007570`
+- `150` epochs, cosine `1e-2 / 1e-3`: `24.71s`, final loss `0.008903`
+
+Main result:
+- Best objective result overall: `250` epochs with constant `1e-2 / 1e-3`
+- Best objective result at the more aggressive budget: `150` epochs with constant `1e-2 / 1e-3`
+- Relative to the old `1000`-epoch default, the best `150`-epoch setting was `6.68x` faster while also improving final loss by about `6.9%`
+
+Artifacts:
+- `experiments/test4_higher_lr_fewer_epochs/test4_comparison.png`
+- `experiments/test4_higher_lr_fewer_epochs/test4_summary.csv`
+- `experiments/test4_higher_lr_fewer_epochs/summary.md`
+- Per-run stitched objects and metric plots are in `experiments/test4_higher_lr_fewer_epochs/test4_*`
+
+Interpretation:
+- Higher learning rates are necessary when the epoch budget is cut aggressively.
+- Cosine decay did not improve objective loss in this short-run regime.
+- Subjectively, the `1e-2` constant and cosine runs at `150` epochs looked nearly the same, so the constant schedule is the cleaner default because it keeps the lower loss at the same runtime.
+- For further scaling tests, the strongest short-solve default is constant object/intensity LR `1e-2`, pupil/k-vector LR `1e-3`, with `150` epochs if speed is the priority and `250` epochs if more optimization margin is desired.
 
 ## Remaining Scaling Questions
 
 - How much throughput improvement is available from larger `tile_batch_size` before memory pressure dominates?
 - Does the `tile_batch_size` optimum change as `CROP_SIZE` increases beyond `512`?
-- How much of the projected full-frame cost can be reduced by lowering `EPOCHS` without unacceptable quality loss?
+- How well does the new short-solve optimizer setting transfer to larger fields of view such as `CROP_SIZE=512` and beyond?
 - Is `ROI_SIZE=128` still the right operating point once batching and lower-epoch solves are both optimized?
 - Does a higher `UPSAMPLE_RATIO` recover materially better detail, or mostly increase compute and output size?
 
 ## Practical Next Steps
 
-1. Finish Test 3 and identify the best feasible `tile_batch_size`.
-2. Update the full-frame projection using the best Test 3 throughput point.
-3. Run Test 4 on one representative geometry after choosing the target upsample regime.
-4. Re-estimate full-frame runtime under the improved batch size, epoch budget, and chosen upsample ratio.
+1. Re-estimate the full-frame projection using the improved short-solve optimizer setting from Test 4.
+2. Validate that Test 4 setting on a larger crop, such as `CROP_SIZE=512`, to confirm the speedup carries over.
+3. Revisit `ROI_SIZE` and `tile_batch_size` only after confirming the new optimizer regime at the larger field of view.

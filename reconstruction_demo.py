@@ -18,17 +18,17 @@ BASE_DIR = Path("./demo/real")
 OUTPUT_DIR = BASE_DIR / "output"
 
 ROI_SIZE = 128
-CROP_SIZE = 256
+CROP_SIZE = 512
 N_CAPTURES = 61
 
-UPSAMPLE_RATIO = 4
+UPSAMPLE_RATIO = 8
 NA = 0.13 # used to generate the initial guess of pupil, still a free param.
 NUM_PHASE_TERMS = 20
 NUM_AMP_TERMS = 20
 
 TORCH_DEVICE = "mps"
 TILE_BATCH_SIZE = 4
-EPOCHS = 1000
+EPOCHS = 150
 
 TileCompleteCallback = Callable[[int, int, torch.Tensor, ZernikeParams, dict[str, Any]], None]
 BatchCompleteCallback = Callable[[list[tuple[int, int]], ZernikeParams, dict[str, Any]], None]
