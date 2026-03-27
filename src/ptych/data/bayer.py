@@ -2,39 +2,147 @@ import torch
 import torch.nn.functional as F
 from jaxtyping import Float
 
-
-def interpolate_green(data: Float[torch.Tensor, "B N N"]) -> Float[torch.Tensor, "B N N"]:
+def _make_masks(pattern: str, H: int, W: int, device: torch.device):
     """
-    Interpolate R/B positions in a Bayer mosaic using cardinal neighbors.
+    Build boolean masks for R, G, B pixel positions from a Bayer pattern string.
 
-    Assumes RGGB pattern where green pixels are at positions where (x+y) is odd.
-    Vectorized over batch dimension.
+    The pattern string (e.g. "RGGB") maps to a 2x2 tile:
+        pattern[0] pattern[1]
+        pattern[2] pattern[3]
+    """
+    tile = {c: [] for c in "RGB"}
+    for idx, c in enumerate(pattern):
+        tile[c].append((idx // 2, idx % 2))  # (row, col) within the 2x2 tile
+
+    y = torch.arange(H, device=device).view(-1, 1)
+    x = torch.arange(W, device=device).view(1, -1)
+
+    masks = {}
+    for c in "RGB":
+        mask = torch.zeros(H, W, dtype=torch.bool, device=device)
+        for row, col in tile[c]:
+            mask |= (y % 2 == row) & (x % 2 == col)
+        masks[c] = mask
+
+    return masks
+
+
+def _avg_conv(data: Float[torch.Tensor, "B H W"], kernel: torch.Tensor) -> Float[torch.Tensor, "B H W"]:
+    """Apply a 3x3 averaging kernel with replicate padding."""
+    x = data.unsqueeze(1)                                    # [B, 1, H, W]
+    x = F.pad(x, (1, 1, 1, 1), mode="replicate")            # [B, 1, H+2, W+2]
+    x = F.conv2d(x, kernel.view(1, 1, 3, 3).to(x))         # [B, 1, H, W]
+    return x.squeeze(1)                                      # [B, H, W]
+
+
+def demosaic(
+    data: Float[torch.Tensor, "B H W"],
+    pattern: str = "RGGB",
+) -> Float[torch.Tensor, "B 3 H W"]:
+    """
+    Bilinear Bayer demosaicing.
 
     Args:
-        data: [B, N, N] tensor of single-channel Bayer mosaic images
+        data:    [B, H, W] single-channel Bayer mosaic
+        pattern: one of "RGGB", "GRBG", "GBRG", "BGGR"
 
     Returns:
-        [B, N, N] tensor with R/B positions interpolated from green neighbors
+        [B, 3, H, W] full-color image (channels in RGB order)
     """
+    assert pattern in ("RGGB", "GRBG", "GBRG", "BGGR"), f"Unknown pattern: {pattern}"
     _, H, W = data.shape
+    masks = _make_masks(pattern, H, W, data.device)
 
-    # Create mask for R/B positions (where x+y is even)
-    y_idx = torch.arange(H, device=data.device).view(-1, 1)
-    x_idx = torch.arange(W, device=data.device).view(1, -1)
-    rb_mask = ((x_idx + y_idx) % 2 == 0)  # [H, W]
+    # --- Interpolation kernels (unnormalized, we divide by count) ---
 
-    # Pad with edge replication: [B, N, N] -> [B, 1, N, N] -> pad -> [B, 1, N+2, N+2]
-    padded = F.pad(data.unsqueeze(1), (1, 1, 1, 1), mode='replicate').squeeze(1)  # [B, H+2, W+2]
+    # Cardinal neighbors (used for green, and for R/B at green sites)
+    #   . 1 .
+    #   1 . 1
+    #   . 1 .
+    cross = torch.tensor([
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+    ], dtype=data.dtype)
 
-    # Cardinal neighbor averages
-    up = padded[:, :-2, 1:-1]
-    down = padded[:, 2:, 1:-1]
-    left = padded[:, 1:-1, :-2]
-    right = padded[:, 1:-1, 2:]
-    avg = (up + down + left + right) / 4  # [B, H, W]
+    # Diagonal neighbors (used for R at B sites and B at R sites)
+    #   1 . 1
+    #   . . .
+    #   1 . 1
+    diag = torch.tensor([
+        [1, 0, 1],
+        [0, 0, 0],
+        [1, 0, 1],
+    ], dtype=data.dtype)
 
-    # Apply interpolation only at R/B positions
-    result = data.clone()
-    result[:, rb_mask] = avg[:, rb_mask]
+    # Horizontal neighbors (used for R/B at green sites in the same row)
+    #   . . .
+    #   1 . 1
+    #   . . .
+    horiz = torch.tensor([
+        [0, 0, 0],
+        [1, 0, 1],
+        [0, 0, 0],
+    ], dtype=data.dtype)
 
-    return result
+    # Vertical neighbors (used for R/B at green sites in the same column)
+    #   . 1 .
+    #   . . .
+    #   . 1 .
+    vert = torch.tensor([
+        [0, 1, 0],
+        [0, 0, 0],
+        [0, 1, 0],
+    ], dtype=data.dtype)
+
+    # Precompute filtered images
+    cross_avg = _avg_conv(data, cross) / 4
+    diag_avg = _avg_conv(data, diag) / 4
+    horiz_avg = _avg_conv(data, horiz) / 2
+    vert_avg = _avg_conv(data, vert) / 2
+
+    # --- Assemble each channel ---
+    out = torch.empty(data.shape[0], 3, H, W, dtype=data.dtype, device=data.device)
+
+    for i, color in enumerate("RGB"):
+        ch = data.clone()
+        color_mask = masks[color]
+
+        if color == "G":
+            # Green is known at G sites; interpolate at R and B sites via cardinal avg
+            rb_mask = masks["R"] | masks["B"]
+            ch[rb_mask.expand_as(ch)] = cross_avg[rb_mask.expand_as(ch)]
+        else:
+            # For R (or B): known at own sites. Need to fill in two other site types.
+            opposite = "B" if color == "R" else "R"
+
+            # At opposite-color sites: use diagonal average
+            opp_mask = masks[opposite]
+            ch[opp_mask.expand_as(ch)] = diag_avg[opp_mask.expand_as(ch)]
+
+            # At green sites: use horiz or vert depending on whether this green
+            # shares a row or column with the target color.
+            # The color appears in specific rows of the tile. Green sites in those
+            # rows get horizontal interpolation; green sites in other rows get vertical.
+            color_rows = {r for r, _c in _tile_positions(pattern, color)}
+            g_mask = masks["G"]
+
+            y = torch.arange(H, device=data.device).view(-1, 1)
+            same_row = torch.zeros(H, W, dtype=torch.bool, device=data.device)
+            for r in color_rows:
+                same_row |= (y % 2 == r)
+
+            g_same_row = g_mask & same_row
+            g_diff_row = g_mask & ~same_row
+
+            ch[g_same_row.expand_as(ch)] = horiz_avg[g_same_row.expand_as(ch)]
+            ch[g_diff_row.expand_as(ch)] = vert_avg[g_diff_row.expand_as(ch)]
+
+        out[:, i] = ch
+
+    return out
+
+
+def _tile_positions(pattern: str, color: str) -> list[tuple[int, int]]:
+    """Return (row, col) positions of a color within the 2x2 Bayer tile."""
+    return [(i // 2, i % 2) for i, c in enumerate(pattern) if c == color]

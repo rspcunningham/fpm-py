@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt
 
 from ptych import PtychStudy, solve_tiled
 from ptych.core.pupil import ZernikeParams, make_ideal_pupil, make_zernike_pupil
-from ptych.data.bayer import interpolate_green
+from ptych.data.bayer import demosaic
 
 # Experiment settings
 # BASE_DIR = Path("./demo/synthetic")
@@ -169,7 +169,7 @@ def prepare_captures(
     left = (width - crop_size) // 2
 
     captures = study.captures[:n_captures, top:top + crop_size, left:left + crop_size]
-    captures = interpolate_green(captures)
+    captures = demosaic(captures)[:, 1]
     return captures / captures.max()
 
 
