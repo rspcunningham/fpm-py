@@ -1,0 +1,5 @@
+run_name,roi_size,crop_size,n_captures,upsample_ratio,tile_batch_size,epochs,torch_device,tile_count,batch_count,total_runtime_sec,runtime_per_epoch_sec,final_loss,run_index,output_dir,source_note
+test3_tbs1_run1,128,512,61,4,1,1000,mps,16,16,1290.2383947079943,0.08063989966924964,0.005520218095625751,1,/Users/robin/Desktop/parasight/fpm-py/experiments/test3_fixed_problem_vary_tile_batch_size/test3_tbs1_run1,
+test3_tbs2_run1,128,512,61,4,2,1000,mps,16,8,783.5521844169998,0.09794402305212498,0.006149648339487612,1,/Users/robin/Desktop/parasight/fpm-py/experiments/test3_fixed_problem_vary_tile_batch_size/test3_tbs2_run1,
+test3_tbs4_run1,128,512,61,4,4,1000,mps,16,4,970.808187124996,0.24270204678124901,0.0075140310218557715,1,/Users/robin/Desktop/parasight/fpm-py/experiments/test3_fixed_problem_vary_tile_batch_size/test3_tbs4_run1,"Reused from Test 2 identical geometry (CROP_SIZE=512, ROI_SIZE=128, tile_batch_size=4)."
+test3_tbs8_run1,128,512,61,4,8,1000,mps,16,2,624.7854385000028,0.3123927192500014,0.007842798484489322,1,/Users/robin/Desktop/parasight/fpm-py/experiments/test3_fixed_problem_vary_tile_batch_size/test3_tbs8_run1,

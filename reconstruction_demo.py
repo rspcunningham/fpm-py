@@ -1,3 +1,6 @@
+import json
+import math
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -15,19 +18,20 @@ from ptych.data.bayer import demosaic
 # Experiment settings
 # BASE_DIR = Path("./demo/synthetic")
 BASE_DIR = Path("./demo/real")
-OUTPUT_DIR = BASE_DIR / "output"
+RUN_NAME = "test5_up8_run1"
+OUTPUT_DIR = BASE_DIR / "output" / RUN_NAME
 
 ROI_SIZE = 128
-CROP_SIZE = 256
+CROP_SIZE = 128
 N_CAPTURES = 61
 
-UPSAMPLE_RATIO = 4
+UPSAMPLE_RATIO = 8
 NA = 0.13 # used to generate the initial guess of pupil, still a free param.
 NUM_PHASE_TERMS = 20
 NUM_AMP_TERMS = 20
 
 TORCH_DEVICE = "mps"
-TILE_BATCH_SIZE = 4
+TILE_BATCH_SIZE = 1
 EPOCHS = 1000
 
 TileCompleteCallback = Callable[[int, int, torch.Tensor, ZernikeParams, dict[str, Any]], None]
@@ -158,6 +162,44 @@ def save_metrics_summary(
     plt.close(fig)
 
 
+def synchronize_device(torch_device: str | torch.device) -> None:
+    device = str(torch_device)
+    if device.startswith("cuda") and torch.cuda.is_available():
+        torch.cuda.synchronize()
+    elif device == "mps" and torch.backends.mps.is_available():
+        torch.mps.synchronize()
+
+
+def compute_summary(batch_metrics_records: list[dict[str, Any]], total_runtime_sec: float) -> dict[str, Any]:
+    tile_count = sum(len(record["tiles"]) for record in batch_metrics_records)
+    batch_count = len(batch_metrics_records)
+    weighted_final_loss = 0.0
+
+    for record in batch_metrics_records:
+        metrics = record["metrics"]
+        batch_tiles = record["tiles"]
+        weighted_final_loss += float(metrics["loss"][-1]) * len(batch_tiles)
+
+    final_loss = weighted_final_loss / tile_count if tile_count else math.nan
+    runtime_per_epoch_sec = total_runtime_sec / (EPOCHS * batch_count) if batch_count else math.nan
+
+    return {
+        "run_name": RUN_NAME,
+        "roi_size": ROI_SIZE,
+        "crop_size": CROP_SIZE,
+        "n_captures": N_CAPTURES,
+        "upsample_ratio": UPSAMPLE_RATIO,
+        "tile_batch_size": TILE_BATCH_SIZE,
+        "epochs": EPOCHS,
+        "torch_device": TORCH_DEVICE,
+        "tile_count": tile_count,
+        "batch_count": batch_count,
+        "total_runtime_sec": total_runtime_sec,
+        "runtime_per_epoch_sec": runtime_per_epoch_sec,
+        "final_loss": final_loss,
+    }
+
+
 def prepare_captures(
     study: PtychStudy,
     *,
@@ -249,6 +291,8 @@ def main() -> None:
     )
     batch_metrics_records, on_tile_complete, on_batch_complete = make_callbacks(OUTPUT_DIR)
 
+    synchronize_device(TORCH_DEVICE)
+    start_time = time.perf_counter()
     result = solve_tiled(
         captures,
         study.kx_batch[:N_CAPTURES],
@@ -262,6 +306,8 @@ def main() -> None:
         on_batch_complete=on_batch_complete,
         tile_batch_size=TILE_BATCH_SIZE,
     )
+    synchronize_device(TORCH_DEVICE)
+    total_runtime_sec = time.perf_counter() - start_time
 
     save_metrics_summary(
         batch_metrics_records,
@@ -270,7 +316,10 @@ def main() -> None:
 
     save_tensor(result, OUTPUT_DIR / "stitched_object.npy")
     save_preview_png(result, OUTPUT_DIR / "stitched_object.png", mode="intensity")
+    summary = compute_summary(batch_metrics_records, total_runtime_sec)
+    (OUTPUT_DIR / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     print(f"Stitched result shape: {result.shape}")
+    print(json.dumps(summary, indent=2))
 
 
 if __name__ == "__main__":
