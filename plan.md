@@ -6,8 +6,8 @@ This file now tracks experiment status and the remaining scaling questions for `
 
 - Test 1: complete
 - Test 2: complete
-- Test 3: in progress
-- Test 5: pending
+- Test 3: complete
+- Test 5: complete
 - Test 4: pending
 
 ## Test 1: Fixed field of view, vary tile size
@@ -85,12 +85,12 @@ Interpretation:
 
 ## Test 3: Fixed reconstruction problem, vary tile batch size
 
-Status: in progress
+Status: complete
 
 Question:
 - For a fixed reconstruction problem, is runtime dominated by tile count alone, or can larger `tile_batch_size` materially improve throughput?
 
-Current setup:
+Measured setup:
 - `CROP_SIZE=512`
 - `ROI_SIZE=128`
 - `N_CAPTURES=61`
@@ -98,21 +98,33 @@ Current setup:
 - `EPOCHS=1000`
 - `device=mps`
 
-Planned sweep:
+Measured sweep:
 - `tile_batch_size in {1, 2, 4, 8}`
 
-Notes:
-- The `tile_batch_size=4` point already exists from Test 2 with the same reconstruction geometry and can be reused.
-- This is the next key scaling-law test because a full-frame `2304 x 2304` crop at `ROI_SIZE=128` implies `324` tiles, so batching efficiency directly affects viability.
+Measured results:
+- `tile_batch_size=1`: `1290.24s`, final loss `0.005520`
+- `tile_batch_size=2`: `783.55s`, final loss `0.006150`
+- `tile_batch_size=4`: `970.81s`, final loss `0.007514`
+- `tile_batch_size=8`: `624.79s`, final loss `0.007843`
 
-Success criteria:
-- Record total runtime, runtime per epoch, and final loss for each batch size.
-- Generate a comparison figure and summary under `experiments/`.
-- Keep only `stitched_object.png` and `reconstruction_metrics.png` in per-run folders after aggregation.
+Main result:
+- Fastest total runtime: `tile_batch_size=8`
+- Best final loss: `tile_batch_size=1`
+- Throughput and reconstruction quality did not share the same optimum in this sweep
+
+Artifacts:
+- `experiments/test3_fixed_problem_vary_tile_batch_size/test3_comparison.png`
+- `experiments/test3_fixed_problem_vary_tile_batch_size/test3_summary.csv`
+- `experiments/test3_fixed_problem_vary_tile_batch_size/summary.md`
+- Per-run stitched objects and metric plots are in `experiments/test3_fixed_problem_vary_tile_batch_size/test3_*`
+
+Notes:
+- The `tile_batch_size=4` point was reused from Test 2 because it had identical geometry.
+- This test confirmed that batch-count overhead matters materially at larger tile grids.
 
 ## Test 5: Fixed geometry, vary upsample ratio
 
-Status: pending
+Status: complete
 
 Question:
 - Does increasing `UPSAMPLE_RATIO` produce meaningfully better reconstructions, and what is the runtime cost?
@@ -121,39 +133,37 @@ Purpose:
 - Separate "larger latent reconstruction grid" from "better physically useful detail".
 - Quantify whether higher upsampling buys real reconstruction quality or mainly increases compute and output image size.
 
-Proposed fixed settings:
-- Use one representative geometry first, likely `CROP_SIZE=256`
-- Keep `ROI_SIZE=128`
-- Keep `N_CAPTURES=61`
-- Keep `EPOCHS=1000` initially
-- Keep `device=mps`
-- Use the best `tile_batch_size` identified by Test 3
+Measured setup:
+- `CROP_SIZE=128`
+- `ROI_SIZE=128`
+- `tile_batch_size=1`
+- `N_CAPTURES=61`
+- `EPOCHS=1000`
+- `device=mps`
 
-Sweep:
+Measured sweep:
 - `UPSAMPLE_RATIO in {4, 8, 16}`
-- If `16` does not fit in memory or is prohibitively slow, stop at `8`
 
-Measurements:
-- Total runtime
-- Runtime per epoch
-- Final loss
-- Peak memory usage if feasible
+Measured results:
+- `UPSAMPLE_RATIO=4`: `56.09s`, final loss `0.004387`
+- `UPSAMPLE_RATIO=8`: `219.99s`, final loss `0.004409`
+- `UPSAMPLE_RATIO=16`: `1077.48s`, final loss `0.004385`
 
-Quality evaluation:
-- Compare stitched-object crops at matched field of view
-- Compare radial Fourier magnitude / spectrum of the reconstruction
-- Compare edge sharpness or line-profile contrast on the same ROI
-- If a suitable in-frame feature exists, compare contrast on that feature across upsample ratios
+Main result:
+- Fastest runtime: `UPSAMPLE_RATIO=4`
+- Best final loss: `UPSAMPLE_RATIO=16`
+- `16x` was `19.21x` slower than `4x` while improving final loss by only about `0.04%`
 
-Interpretation rule:
-- A larger `stitched_object.png` is not sufficient evidence of better reconstruction quality.
-- Higher `UPSAMPLE_RATIO` is only a win if it improves either loss-quality tradeoff or the frequency/detail metrics in a meaningful way.
+Artifacts:
+- `experiments/test5_fixed_geometry_vary_upsample_ratio/test5_comparison.png`
+- `experiments/test5_fixed_geometry_vary_upsample_ratio/test5_summary.csv`
+- `experiments/test5_fixed_geometry_vary_upsample_ratio/summary.md`
+- Per-run stitched objects and metric plots are in `experiments/test5_fixed_geometry_vary_upsample_ratio/test5_*`
 
-Expected scaling:
-- With `ROI_SIZE` fixed, latent object size is `N = ROI_SIZE * UPSAMPLE_RATIO`
-- The forward model operates on `[T, B, N, N]` tensors, so runtime and memory can rise steeply with upsample ratio
-- Roughly, `4 -> 8` is expected to cost several times more than `4`
-- `4 -> 16` may be an order of magnitude more expensive and may not be practical at larger crop sizes
+Interpretation:
+- Runtime rose extremely steeply with `UPSAMPLE_RATIO`.
+- At this single-tile geometry, larger upsample ratios did not buy a meaningful loss improvement relative to their runtime cost.
+- This test isolated upsample effects cleanly by avoiding tile-batching confounds.
 
 ## Test 4: Higher learning rate, fewer epochs
 
@@ -189,6 +199,5 @@ Why it matters:
 
 1. Finish Test 3 and identify the best feasible `tile_batch_size`.
 2. Update the full-frame projection using the best Test 3 throughput point.
-3. Run Test 5 on one representative geometry to evaluate the quality-vs-cost tradeoff of higher `UPSAMPLE_RATIO`.
-4. Run Test 4 on one representative geometry after choosing the target upsample regime.
-5. Re-estimate full-frame runtime under the improved batch size, epoch budget, and any chosen upsample ratio.
+3. Run Test 4 on one representative geometry after choosing the target upsample regime.
+4. Re-estimate full-frame runtime under the improved batch size, epoch budget, and chosen upsample ratio.

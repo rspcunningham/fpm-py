@@ -9,6 +9,14 @@ from jaxtyping import Float, Complex
 from ptych.core.forward import forward_model
 from ptych.core.pupil import ZernikeParams, make_zernike_pupil
 
+# Temporary optimizer settings for Test 4.
+OBJECT_LR = 1e-3
+INTENSITY_LR = 1e-3
+PUPIL_LR = 1e-4
+K_VECTOR_LR = 1e-4
+LR_SCHEDULE = "constant"  # "constant" or "cosine"
+LR_FINAL_FACTOR = 0.1
+
 def solve_inverse(
     captures: Float[torch.Tensor, "T B n n"], # [T, B, n, n] float on (0, 1)
     object: Complex[torch.Tensor, "T N N"], # [T, N, N] complex on (0, 1)
@@ -46,11 +54,11 @@ def solve_inverse(
     learned_tensors: list[dict[str, torch.Tensor | float]] = []
     object_amp = torch.abs(object).clone().detach().requires_grad_(True)      # [T, N, N]
     object_phase = torch.angle(object).clone().detach().requires_grad_(True)  # [T, N, N]
-    learned_tensors.append({'params': object_amp, 'lr': 0.001})
-    learned_tensors.append({'params': object_phase, 'lr': 0.001})
+    learned_tensors.append({'params': object_amp, 'lr': OBJECT_LR})
+    learned_tensors.append({'params': object_phase, 'lr': OBJECT_LR})
 
     intensity_scale = torch.ones(B, device=torch_device).requires_grad_(True)  # [B]
-    learned_tensors.append({'params': intensity_scale, 'lr': 0.001})
+    learned_tensors.append({'params': intensity_scale, 'lr': INTENSITY_LR})
 
     # Clone/detach coefficients and rad_fraction (basis is fixed, not cloned)
     phase_coeffs = pupil.phase_coeffs.clone().detach().to(torch_device)
@@ -62,9 +70,9 @@ def solve_inverse(
         phase_coeffs = phase_coeffs.requires_grad_(True)
         amp_coeffs = amp_coeffs.requires_grad_(True)
         rad_fraction = rad_fraction.requires_grad_(True)
-        learned_tensors.append({'params': phase_coeffs, 'lr': 0.0001})
-        learned_tensors.append({'params': amp_coeffs, 'lr': 0.0001})
-        learned_tensors.append({'params': rad_fraction, 'lr': 0.0001})
+        learned_tensors.append({'params': phase_coeffs, 'lr': PUPIL_LR})
+        learned_tensors.append({'params': amp_coeffs, 'lr': PUPIL_LR})
+        learned_tensors.append({'params': rad_fraction, 'lr': PUPIL_LR})
 
     working_zernike = ZernikeParams(phase_coeffs, amp_coeffs, basis, rad_fraction)
     pupil_tensor = make_zernike_pupil(
@@ -77,14 +85,23 @@ def solve_inverse(
     if learn_k_vectors:
         kx_batch = kx_batch.clone().detach().requires_grad_(True)
         ky_batch = ky_batch.clone().detach().requires_grad_(True)
-        learned_tensors.append({'params': kx_batch, 'lr': 0.0001})
-        learned_tensors.append({'params': ky_batch, 'lr': 0.0001})
+        learned_tensors.append({'params': kx_batch, 'lr': K_VECTOR_LR})
+        learned_tensors.append({'params': ky_batch, 'lr': K_VECTOR_LR})
     else:
         kx_batch = kx_batch.detach()
         ky_batch = ky_batch.detach()
 
     # Initialize the optimizer
     optimizer = torch.optim.AdamW(learned_tensors)
+    scheduler = None
+    if LR_SCHEDULE == "cosine":
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=max(epochs, 1),
+            eta_min=min(OBJECT_LR, PUPIL_LR, K_VECTOR_LR, INTENSITY_LR) * LR_FINAL_FACTOR,
+        )
+    elif LR_SCHEDULE != "constant":
+        raise ValueError(f"Unsupported LR_SCHEDULE: {LR_SCHEDULE}")
 
     # Telemetry — accumulate loss on GPU, transfer to CPU only when needed
     loss_accumulator = torch.zeros(epochs, device=torch_device)
@@ -124,6 +141,8 @@ def solve_inverse(
         optimizer.zero_grad()
         total_loss.backward()
         optimizer.step()
+        if scheduler is not None:
+            scheduler.step()
 
         # Record loss on GPU (no sync)
         loss_accumulator[epoch] = total_loss.detach()
