@@ -1,12 +1,10 @@
-from collections.abc import Callable
-from typing import Any
-
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 from jaxtyping import Float, Complex
 
 from ptych.core.forward import forward_model
+from ptych.core.metrics import CheckpointCallback, InverseMetrics
 from ptych.core.pupil import ZernikeParams, make_zernike_pupil
 
 
@@ -20,9 +18,9 @@ def solve_inverse(
     learn_pupil: bool = True,
     learn_k_vectors: bool = False,
     torch_device: str | torch.device = "cpu",
-    on_checkpoint: Callable[[int, Complex[torch.Tensor, "T N N"]], None] | None = None,
+    on_checkpoint: CheckpointCallback | None = None,
     checkpoint_interval: int = 50,
-) -> tuple[Complex[torch.Tensor, "T N N"], ZernikeParams, dict[str, Any]]:
+) -> tuple[Complex[torch.Tensor, "T N N"], ZernikeParams, InverseMetrics]:
 
     # Move all tensors to the specified device
     captures = captures.to(torch_device)
@@ -38,8 +36,6 @@ def solve_inverse(
             )
 
     upsample_ratio = object.shape[1] // captures.shape[2]
-    N = object.shape[1]
-
     # renormalize k vectors
     kx_batch = kx_batch / upsample_ratio
     ky_batch = ky_batch / upsample_ratio
@@ -131,10 +127,10 @@ def solve_inverse(
             on_checkpoint(epoch, object_checkpoint)
 
     # Transfer loss history to CPU in one bulk operation
-    metrics: dict[str, Any] = {
-        'loss': loss_accumulator.cpu().tolist(),
-        'tile_loss': tile_loss_accumulator.cpu().tolist(),
-        'capture_loss': capture_loss_accumulator.cpu().tolist(),
+    metrics: InverseMetrics = {
+        "loss": loss_accumulator.cpu().tolist(),
+        "tile_loss": tile_loss_accumulator.cpu().tolist(),
+        "capture_loss": capture_loss_accumulator.cpu().tolist(),
     }
 
     # Reconstruct final complex object from optimized amplitude and phase
@@ -148,5 +144,5 @@ def solve_inverse(
             working_zernike.basis,
             working_zernike.rad_fraction.detach(),
         ),
-        metrics
+        metrics,
     )

@@ -258,8 +258,6 @@ def make_zernike_pupil(
     # Clamp to unit disk for polynomial evaluation (Zernike polynomials are
     # only valid on [0, 1] and diverge outside)
     rho_clamped = torch.clamp(rho_norm, max=1.0)
-    mask = torch.sigmoid((1.0 - rho_norm) * 20.0)
-
     # Vectorized evaluation of all Zernike terms at once
     num_phase = len(phase_coeffs)
     num_amp = len(amp_coeffs)

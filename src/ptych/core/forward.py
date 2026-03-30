@@ -26,7 +26,7 @@ def forward_model(
         torch.Tensor: Predicted intensities [T, B, N, N]
     """
 
-    T, N, _ = object_tensor.shape
+    _, N, _ = object_tensor.shape
     dtype = object_tensor.dtype
     device = object_tensor.device
     kx_reshaped = kx.view(-1, 1, 1)

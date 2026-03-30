@@ -6,16 +6,12 @@ import json
 import os
 import shutil
 import tempfile
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, BinaryIO, Protocol, cast
+from typing import BinaryIO, Protocol, cast
 from uuid import uuid4
-
-if os.name == "nt":
-    import msvcrt
-else:
-    import fcntl
 
 from ptych.data.parse import ManifestParseError, parse_manifest
 
@@ -25,6 +21,9 @@ from .nextcloud_share import NextcloudShareTransport
 DEFAULT_CACHE_DIR = Path.home() / ".cache" / "ptych" / "datasets"
 DEFAULT_NEXTCLOUD_BASE_URL = "http://dqe.asuscomm.com:8080"
 DEFAULT_NEXTCLOUD_SHARE_ID = "SLbNBTqK9firqZM"
+
+type JsonValue = None | bool | int | float | str | list[JsonValue] | dict[str, JsonValue]
+type DatasetMetadata = dict[str, JsonValue]
 
 
 class NextcloudDatasetCacheError(Exception):
@@ -44,6 +43,12 @@ class DatasetTransport(Protocol):
 
 
 class NextcloudDatasetCache:
+    cache_dir: Path
+    _locks_dir: Path
+    transport: DatasetTransport
+    base_url: str
+    share_id: str
+
     def __init__(
         self,
         cache_dir: str | Path | None = None,
@@ -78,8 +83,8 @@ class NextcloudDatasetCache:
 
             return self._refresh_dataset(normalized_id)
 
-    def list_cached(self) -> list[dict[str, Any]]:
-        results: list[dict[str, Any]] = []
+    def list_cached(self) -> list[DatasetMetadata]:
+        results: list[DatasetMetadata] = []
         for dataset_root in sorted(self.cache_dir.iterdir()):
             if not dataset_root.is_dir() or dataset_root.name == ".locks":
                 continue
@@ -90,10 +95,11 @@ class NextcloudDatasetCache:
 
             try:
                 with metadata_path.open(encoding="utf-8") as fh:
-                    metadata = json.load(fh)
+                    metadata = cast(DatasetMetadata, json.load(fh))
             except json.JSONDecodeError:
                 continue
 
+            metadata = metadata.copy()
             metadata["data_path"] = str(dataset_root / "data")
             results.append(metadata)
 
@@ -131,7 +137,7 @@ class NextcloudDatasetCache:
                 backup_path.rename(data_path)
 
             if not data_path.exists():
-                failed_metadata = {
+                failed_metadata: DatasetMetadata = {
                     "dataset_id": dataset_id,
                     "status": "failed",
                     "fetched_at": datetime.now(UTC).isoformat(),
@@ -144,7 +150,7 @@ class NextcloudDatasetCache:
         finally:
             shutil.rmtree(staging_dir, ignore_errors=True)
 
-    def _validate_extracted_dataset(self, dataset_root: Path, dataset_id: str) -> dict[str, Any]:
+    def _validate_extracted_dataset(self, dataset_root: Path, dataset_id: str) -> DatasetMetadata:
         manifest_path = dataset_root / "info.json"
         if not manifest_path.is_file():
             raise DatasetValidationError(f"Dataset '{dataset_id}' is missing info.json")
@@ -209,18 +215,18 @@ class NextcloudDatasetCache:
     def _metadata_path(self, dataset_id: str) -> Path:
         return self._dataset_root(dataset_id) / "metadata.json"
 
-    def _read_metadata(self, dataset_id: str) -> dict[str, Any] | None:
+    def _read_metadata(self, dataset_id: str) -> DatasetMetadata | None:
         metadata_path = self._metadata_path(dataset_id)
         if not metadata_path.exists():
             return None
 
         try:
             with metadata_path.open(encoding="utf-8") as fh:
-                return json.load(fh)
+                return cast(DatasetMetadata, json.load(fh))
         except json.JSONDecodeError:
             return None
 
-    def _write_metadata(self, dataset_id: str, metadata: dict[str, Any]) -> None:
+    def _write_metadata(self, dataset_id: str, metadata: DatasetMetadata) -> None:
         metadata_path = self._metadata_path(dataset_id)
         metadata_path.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(
@@ -240,8 +246,7 @@ class NextcloudDatasetCache:
         resolved = (base_url or os.environ.get("PTYCH_NEXTCLOUD_BASE_URL") or DEFAULT_NEXTCLOUD_BASE_URL).strip()
         if not resolved:
             raise NextcloudDatasetCacheError(
-                "Nextcloud base URL is not configured. Set PTYCH_NEXTCLOUD_BASE_URL or "
-                "edit DEFAULT_NEXTCLOUD_BASE_URL in dataset_cache.py."
+                "Nextcloud base URL is not configured. Set PTYCH_NEXTCLOUD_BASE_URL or edit DEFAULT_NEXTCLOUD_BASE_URL in dataset_cache.py."
             )
         return resolved.rstrip("/")
 
@@ -249,13 +254,12 @@ class NextcloudDatasetCache:
         resolved = (share_id or os.environ.get("PTYCH_NEXTCLOUD_SHARE_ID") or DEFAULT_NEXTCLOUD_SHARE_ID).strip()
         if not resolved:
             raise NextcloudDatasetCacheError(
-                "Nextcloud share ID is not configured. Set PTYCH_NEXTCLOUD_SHARE_ID or "
-                "edit DEFAULT_NEXTCLOUD_SHARE_ID in dataset_cache.py."
+                "Nextcloud share ID is not configured. Set PTYCH_NEXTCLOUD_SHARE_ID or edit DEFAULT_NEXTCLOUD_SHARE_ID in dataset_cache.py."
             )
         return resolved
 
     @contextmanager
-    def _dataset_lock(self, dataset_id: str):
+    def _dataset_lock(self, dataset_id: str) -> Iterator[None]:
         lock_name = hashlib.sha256(dataset_id.encode("utf-8")).hexdigest()
         lock_path = self._locks_dir / f"{lock_name}.lock"
         lock_path.parent.mkdir(parents=True, exist_ok=True)
@@ -273,16 +277,24 @@ class NextcloudDatasetCache:
                 lock_file.write(b"\0")
                 lock_file.flush()
             lock_file.seek(0)
+            import msvcrt
+
             msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
             return
+
+        import fcntl
 
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
 
     def _unlock_file(self, lock_file: BinaryIO) -> None:
         if os.name == "nt":
             lock_file.seek(0)
+            import msvcrt
+
             msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
             return
+
+        import fcntl
 
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
@@ -299,12 +311,16 @@ def _build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
+    cache_dir = cast(str | None, args.cache_dir)
+    base_url = cast(str | None, args.base_url)
+    share_id = cast(str | None, args.share_id)
+    dataset_id = cast(str, args.dataset_id)
     cache = NextcloudDatasetCache(
-        cache_dir=args.cache_dir,
-        base_url=args.base_url,
-        share_id=args.share_id,
+        cache_dir=cache_dir,
+        base_url=base_url,
+        share_id=share_id,
     )
-    print(cache.fetch_dataset(args.dataset_id))
+    print(cache.fetch_dataset(dataset_id))
 
 
 if __name__ == "__main__":

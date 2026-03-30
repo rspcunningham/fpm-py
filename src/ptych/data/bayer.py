@@ -2,7 +2,8 @@ import torch
 import torch.nn.functional as F
 from jaxtyping import Float
 
-def _make_masks(pattern: str, H: int, W: int, device: torch.device):
+
+def _make_masks(pattern: str, H: int, W: int, device: torch.device) -> dict[str, torch.Tensor]:
     """
     Build boolean masks for R, G, B pixel positions from a Bayer pattern string.
 
@@ -10,16 +11,16 @@ def _make_masks(pattern: str, H: int, W: int, device: torch.device):
         pattern[0] pattern[1]
         pattern[2] pattern[3]
     """
-    tile = {c: [] for c in "RGB"}
+    tile: dict[str, list[tuple[int, int]]] = {c: [] for c in "RGB"}
     for idx, c in enumerate(pattern):
         tile[c].append((idx // 2, idx % 2))  # (row, col) within the 2x2 tile
 
     y = torch.arange(H, device=device).view(-1, 1)
     x = torch.arange(W, device=device).view(1, -1)
 
-    masks = {}
+    masks: dict[str, torch.Tensor] = {}
     for c in "RGB":
-        mask = torch.zeros(H, W, dtype=torch.bool, device=device)
+        mask: torch.Tensor = torch.zeros(H, W, dtype=torch.bool, device=device)
         for row, col in tile[c]:
             mask |= (y % 2 == row) & (x % 2 == col)
         masks[c] = mask
@@ -106,7 +107,6 @@ def demosaic(
 
     for i, color in enumerate("RGB"):
         ch = data.clone()
-        color_mask = masks[color]
 
         if color == "G":
             # Green is known at G sites; interpolate at R and B sites via cardinal avg
@@ -124,8 +124,8 @@ def demosaic(
             # shares a row or column with the target color.
             # The color appears in specific rows of the tile. Green sites in those
             # rows get horizontal interpolation; green sites in other rows get vertical.
-            color_rows = {r for r, _c in _tile_positions(pattern, color)}
-            g_mask = masks["G"]
+            color_rows: set[int] = {r for r, _c in _tile_positions(pattern, color)}
+            g_mask: torch.Tensor = masks["G"]
 
             y = torch.arange(H, device=data.device).view(-1, 1)
             same_row = torch.zeros(H, W, dtype=torch.bool, device=data.device)

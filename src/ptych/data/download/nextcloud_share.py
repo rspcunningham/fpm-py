@@ -10,9 +10,10 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from email.message import Message
 from pathlib import Path
 from threading import Lock
-from typing import Callable, cast
+from typing import BinaryIO, Callable, Protocol, cast
 
 from tqdm.auto import tqdm
 
@@ -36,6 +37,22 @@ WEBDAV_NAMESPACES = {"oc": "http://owncloud.org/ns"}
 DAV_NAMESPACES = {"d": "DAV:"}
 
 
+class DownloadResponse(Protocol):
+    headers: Message
+
+    def read(self, size: int = -1) -> bytes: ...
+
+
+class DownloadResponseContext(DownloadResponse, Protocol):
+    def __enter__(self) -> DownloadResponse: ...
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> object: ...
+
+
+class ProgressBar(Protocol):
+    def update(self, n: int = 1) -> object: ...
+
+
 def _auth_header(share_id: str) -> str:
     credentials = f"{share_id}:".encode("utf-8")
     return "Basic " + base64.b64encode(credentials).decode("ascii")
@@ -54,12 +71,8 @@ def _dav_file_url(base_url: str, share_id: str, path: str) -> str:
     return _dav_url(base_url, share_id, path).rstrip("/")
 
 
-def _response_content_length(response: object) -> int | None:
-    headers = getattr(response, "headers", None)
-    if headers is None:
-        return None
-
-    raw_value = headers.get("Content-Length")
+def _response_content_length(response: DownloadResponse) -> int | None:
+    raw_value = response.headers.get("Content-Length")
     if raw_value is None:
         return None
 
@@ -69,6 +82,10 @@ def _response_content_length(response: object) -> int | None:
         return None
 
     return content_length if content_length >= 0 else None
+
+
+def _open_response(request: urllib.request.Request) -> DownloadResponseContext:
+    return cast(DownloadResponseContext, urllib.request.urlopen(request))
 
 
 def _format_bytes(num_bytes: int) -> str:
@@ -111,7 +128,7 @@ def _download_file_to_path(
     destination.parent.mkdir(parents=True, exist_ok=True)
 
     bytes_written = 0
-    with urllib.request.urlopen(request) as response, destination.open("wb") as fh:
+    with _open_response(request) as response, destination.open("wb") as fh:
         while chunk := response.read(DOWNLOAD_CHUNK_SIZE):
             fh.write(chunk)
             bytes_written += len(chunk)
@@ -136,7 +153,7 @@ def _zip_content_length(url: str, share_id: str) -> int | None:
         method="HEAD",
     )
     try:
-        with urllib.request.urlopen(request) as response:
+        with _open_response(request) as response:
             return _response_content_length(response)
     except urllib.error.URLError:
         return None
@@ -154,7 +171,7 @@ def _directory_size_hint(base_url: str, share_id: str, directory_name: str) -> i
         method="PROPFIND",
     )
     try:
-        with urllib.request.urlopen(request) as response:
+        with _open_response(request) as response:
             payload = response.read()
     except urllib.error.URLError:
         return None
@@ -174,12 +191,6 @@ def _directory_size_hint(base_url: str, share_id: str, directory_name: str) -> i
         return None
 
     return size if size >= 0 else None
-
-
-def _file_content_length(base_url: str, share_id: str, path: str) -> int | None:
-    return _zip_content_length(_dav_file_url(base_url, share_id, path), share_id)
-
-
 @dataclass(frozen=True)
 class RemoteFileEntry:
     path: str
@@ -205,7 +216,7 @@ def _list_directory_files(base_url: str, share_id: str, directory_path: str) -> 
         method="PROPFIND",
     )
 
-    with urllib.request.urlopen(request) as response:
+    with _open_response(request) as response:
         payload = response.read()
 
     root = ET.fromstring(payload)
@@ -243,29 +254,42 @@ def _list_directory_files(base_url: str, share_id: str, directory_path: str) -> 
     return entries
 
 
+def _copy_stream_with_progress(response: DownloadResponse, fh: BinaryIO, progress: ProgressBar) -> None:
+    while chunk := response.read(DOWNLOAD_CHUNK_SIZE):
+        fh.write(chunk)
+        progress.update(len(chunk))
+
+
 def _stream_download_to_file(
-    response: object,
+    response: DownloadResponse,
     destination: Path,
     description: str,
     *,
     total_bytes: int | None = None,
 ) -> None:
     total_bytes = total_bytes if total_bytes is not None else _response_content_length(response)
-    progress_kwargs: dict[str, object] = {
-        "desc": description,
-        "dynamic_ncols": True,
-        "unit": "B",
-        "unit_divisor": 1024,
-        "unit_scale": True,
-    }
-    if total_bytes is not None:
-        progress_kwargs["total"] = total_bytes
-        progress_kwargs["bar_format"] = PROGRESS_BAR_FORMAT
+    with destination.open("wb") as fh:
+        if total_bytes is None:
+            with tqdm(
+                desc=description,
+                dynamic_ncols=True,
+                unit="B",
+                unit_divisor=1024,
+                unit_scale=True,
+            ) as progress:
+                _copy_stream_with_progress(response, fh, progress)
+            return
 
-    with destination.open("wb") as fh, tqdm(**progress_kwargs) as progress:
-        while chunk := response.read(DOWNLOAD_CHUNK_SIZE):
-            fh.write(chunk)
-            progress.update(len(chunk))
+        with tqdm(
+            total=total_bytes,
+            desc=description,
+            dynamic_ncols=True,
+            unit="B",
+            unit_divisor=1024,
+            unit_scale=True,
+            bar_format=PROGRESS_BAR_FORMAT,
+        ) as progress:
+            _copy_stream_with_progress(response, fh, progress)
 
 
 def download_directory_zip_to_path(
@@ -298,7 +322,7 @@ def download_directory_zip_to_path(
     )
 
     try:
-        with urllib.request.urlopen(request) as response:
+        with _open_response(request) as response:
             _stream_download_to_file(
                 response,
                 output_path,
@@ -429,15 +453,18 @@ def _build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
+    base_url = cast(str, args.base_url)
+    share_id = cast(str, args.share_id)
+    directory_name = cast(str, args.directory_name)
+    destination_path = cast(str | None, args.destination_path)
 
-    destination_path = args.destination_path
     if destination_path is None:
-        destination_path = f"{Path(args.directory_name).name}.zip"
+        destination_path = f"{Path(directory_name).name}.zip"
 
     output_path = download_directory_zip_to_path(
-        args.base_url,
-        args.share_id,
-        args.directory_name,
+        base_url,
+        share_id,
+        directory_name,
         destination_path,
     )
     print(output_path)

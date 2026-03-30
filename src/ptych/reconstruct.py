@@ -1,21 +1,22 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
 
 import torch
 from jaxtyping import Complex
 
+from ptych.core.metrics import (
+    BatchCompleteCallback,
+    BatchMetricsRecord,
+    CheckpointCallback,
+    TileCompleteCallback,
+)
 from ptych.core.pupil import ZernikeParams
-from ptych.core.tiled import _solve_tiled_from_inputs
+from ptych.core.tiled import solve_tiled_from_inputs
 from ptych.data.bayer import demosaic
 from ptych.data.study import PtychStudy
 from ptych.data.types import Capture
 
-
-TileCompleteCallback = Callable[[int, int, torch.Tensor, ZernikeParams, dict[str, Any]], None]
-BatchCompleteCallback = Callable[[list[tuple[int, int]], ZernikeParams, dict[str, Any]], None]
 
 _RGB_REFERENCE_WAVELENGTHS_M = (
     625e-9,  # red
@@ -28,7 +29,7 @@ _RGB_REFERENCE_WAVELENGTHS_M = (
 class StudySolveResult:
     stitched_object: Complex[torch.Tensor, "N N"]
     tile_pupils: dict[tuple[int, int], Complex[torch.Tensor, "N N"]]
-    batch_metrics: list[dict[str, Any]]
+    batch_metrics: list[BatchMetricsRecord]
 
 
 def _valid_study_captures(study: PtychStudy) -> list[Capture]:
@@ -36,7 +37,7 @@ def _valid_study_captures(study: PtychStudy) -> list[Capture]:
     if len(valid_captures) != study.captures.shape[0]:
         raise ValueError(
             "Study manifest captures do not align with loaded study tensors. "
-            "Expected one loaded tensor per valid manifest capture."
+            + "Expected one loaded tensor per valid manifest capture."
         )
     return valid_captures
 
@@ -105,17 +106,20 @@ def solve_study(
     upsample_ratio: int = 4,
     epochs: int = 1000,
     torch_device: str | torch.device = "cpu",
+    learn_pupil: bool = True,
+    learn_k_vectors: bool = False,
+    on_checkpoint: CheckpointCallback | None = None,
+    checkpoint_interval: int = 50,
     on_tile_complete: TileCompleteCallback | None = None,
     on_batch_complete: BatchCompleteCallback | None = None,
     tile_batch_size: int = 1,
-    **kwargs: Any,
 ) -> StudySolveResult:
     captures, kx_batch, ky_batch = _prepare_study_inputs(
         study,
         n_captures=n_captures,
         crop_size=crop_size,
     )
-    stitched_object, tile_pupils, batch_metrics = _solve_tiled_from_inputs(
+    stitched_object, tile_pupils, batch_metrics = solve_tiled_from_inputs(
         captures,
         kx_batch,
         ky_batch,
@@ -124,10 +128,13 @@ def solve_study(
         upsample_ratio=upsample_ratio,
         epochs=epochs,
         torch_device=torch_device,
+        learn_pupil=learn_pupil,
+        learn_k_vectors=learn_k_vectors,
+        on_checkpoint=on_checkpoint,
+        checkpoint_interval=checkpoint_interval,
         on_tile_complete=on_tile_complete,
         on_batch_complete=on_batch_complete,
         tile_batch_size=tile_batch_size,
-        **kwargs,
     )
     return StudySolveResult(
         stitched_object=stitched_object,

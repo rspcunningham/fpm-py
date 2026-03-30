@@ -1,7 +1,9 @@
 from dataclasses import replace
 from pathlib import Path
+from typing import cast
 
 import numpy as np
+import numpy.typing as npt
 import torch
 from PIL import Image
 
@@ -16,10 +18,12 @@ study = PtychStudy.load("usaf_test")
 
 # Load ideal.png and convert to grayscale float [0, 1]
 img = Image.open(IDEAL_IMAGE_PATH).convert("L")
-amplitude = np.array(img, dtype=np.float32) / 255.0
+amplitude: npt.NDArray[np.float32] = np.asarray(img, dtype=np.float32) / np.float32(255.0)
 
 # Center-crop to a square so the current synthetic pipeline receives NxN tensors.
-height, width = amplitude.shape
+image_shape = cast(tuple[int, int], amplitude.shape)
+height = image_shape[0]
+width = image_shape[1]
 crop_size = min(height, width)
 top = (height - crop_size) // 2
 left = (width - crop_size) // 2
