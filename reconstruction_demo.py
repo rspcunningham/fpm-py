@@ -5,119 +5,38 @@ from typing import Any
 import numpy as np
 import seaborn as sns
 import torch
-from PIL import Image
 from matplotlib import pyplot as plt
 
 from ptych import PtychStudy, solve_tiled
 from ptych.core.pupil import ZernikeParams, make_ideal_pupil, make_zernike_pupil
 from ptych.data.bayer import demosaic
+from preview_utils import save_preview_png, save_tensor
 
 
+# Dataset and output settings
 study = PtychStudy.load("usaf_test")
-
-# Experiment settings
 OUTPUT_DIR = Path("./results")
 
-ROI_SIZE = 128
+# Reconstruction geometry settings
+ROI_SIZE = 64
 CROP_SIZE = 256
 N_CAPTURES = 61
 
 UPSAMPLE_RATIO = 8
-NA = 0.13 # used to generate the initial guess of pupil, still a free param.
+NA = 0.13  # Used to generate the initial pupil guess; still a free parameter.
 NUM_PHASE_TERMS = 20
 NUM_AMP_TERMS = 20
 
-TORCH_DEVICE = "mps" # switch to "cpu" or "cuda"
-TILE_BATCH_SIZE = 4
+# Optimization and runtime settings
+TORCH_DEVICE = "mps"  # Switch to "cpu" or "cuda".
+TILE_BATCH_SIZE = 16
 EPOCHS = 150
-
-# main code block starts at line 236
 
 TileCompleteCallback = Callable[[int, int, torch.Tensor, ZernikeParams, dict[str, Any]], None]
 BatchCompleteCallback = Callable[[list[tuple[int, int]], ZernikeParams, dict[str, Any]], None]
 
 
-def save_tensor(tensor: torch.Tensor, path: Path) -> None:
-    np.save(path, tensor.cpu().numpy())
-
-
-def render_scalar_image(tensor: torch.Tensor, mode: str = "intensity") -> np.ndarray:
-    arr = tensor.detach().cpu().numpy()
-
-    if mode == "intensity":
-        return np.abs(arr).astype(np.float32) ** 2
-    if mode == "amplitude":
-        return np.abs(arr).astype(np.float32)
-    if mode == "phase":
-        return np.angle(arr).astype(np.float32)
-
-    raise ValueError(f"Unsupported render mode: {mode}")
-
-
-def normalize_preview(
-    arr: np.ndarray,
-    *,
-    lower_pct: float = 0.5,
-    upper_pct: float = 99.5,
-    tone_map: str = "gamma",
-    gamma: float = 2.0,
-    log_gain: float = 100.0,
-) -> np.ndarray:
-    arr = np.asarray(arr, dtype=np.float32)
-    arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
-
-    finite = arr[np.isfinite(arr)]
-    if finite.size == 0:
-        return np.zeros_like(arr, dtype=np.float32)
-
-    lo, hi = np.percentile(finite, [lower_pct, upper_pct])
-    if hi <= lo:
-        max_val = float(np.max(finite, initial=0.0))
-        if max_val <= 0.0:
-            return np.zeros_like(arr, dtype=np.float32)
-        normalized = np.clip(arr / max_val, 0.0, 1.0)
-    else:
-        windowed = np.clip(arr, lo, hi)
-        normalized = (windowed - lo) / (hi - lo)
-
-    if tone_map == "linear":
-        return normalized
-    if tone_map == "gamma":
-        return normalized ** gamma
-    if tone_map == "log":
-        return np.log1p(log_gain * normalized) / np.log1p(log_gain)
-
-    raise ValueError(f"Unsupported tone map: {tone_map}")
-
-
-def save_preview_png(
-    tensor: torch.Tensor,
-    path: Path,
-    *,
-    mode: str = "intensity",
-    lower_pct: float = 0.5,
-    upper_pct: float = 99.5,
-    tone_map: str = "gamma",
-    gamma: float = 2.0,
-) -> None:
-    arr = render_scalar_image(tensor, mode=mode)
-
-    if mode == "phase":
-        arr_norm = (arr + np.pi) / (2 * np.pi)
-        arr_norm = np.clip(arr_norm, 0.0, 1.0)
-    else:
-        arr_norm = normalize_preview(
-            arr,
-            lower_pct=lower_pct,
-            upper_pct=upper_pct,
-            tone_map=tone_map,
-            gamma=gamma,
-        )
-
-    arr_u8 = np.asarray(np.rint(arr_norm * 255.0), dtype=np.uint8)
-    Image.fromarray(arr_u8).save(path)
-
-
+# Plotting and artifact helpers
 def save_metrics_summary(
     batch_metrics_records: list[dict[str, Any]],
     *,
@@ -161,6 +80,7 @@ def save_metrics_summary(
     plt.close(fig)
 
 
+# Reconstruction-specific data preparation
 def prepare_captures(
     study: PtychStudy,
     *,
@@ -197,7 +117,7 @@ def build_initial_pupil(
     )
 
 
-def make_callbacks(
+def build_output_callbacks(
     output_dir: Path,
 ) -> tuple[list[dict[str, Any]], TileCompleteCallback, BatchCompleteCallback]:
     batch_metrics_records: list[dict[str, Any]] = []
@@ -209,6 +129,7 @@ def make_callbacks(
         tile_pupil: ZernikeParams,
         _metrics: dict[str, Any],
     ) -> None:
+        # Save per-tile object and pupil artifacts as soon as each tile completes.
         save_tensor(obj, output_dir / f"tile_{r}_{c}_object.npy")
         pupil_tensor = make_zernike_pupil(
             tile_pupil.phase_coeffs,
@@ -225,6 +146,7 @@ def make_callbacks(
         _pupil: ZernikeParams,
         metrics: dict[str, Any],
     ) -> None:
+        # Accumulate per-batch metrics for the summary plot at the end.
         batch_metrics_records.append({
             "tiles": list(batch_tiles),
             "metrics": metrics,
@@ -236,6 +158,7 @@ def make_callbacks(
 def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
+    # Load and prepare study data.
     captures = prepare_captures(
         study,
         n_captures=N_CAPTURES,
@@ -249,8 +172,11 @@ def main() -> None:
         num_phase_terms=NUM_PHASE_TERMS,
         num_amp_terms=NUM_AMP_TERMS,
     )
-    batch_metrics_records, on_tile_complete, on_batch_complete = make_callbacks(OUTPUT_DIR)
+    batch_metrics_records, on_tile_complete, on_batch_complete = build_output_callbacks(
+        OUTPUT_DIR
+    )
 
+    # Run tiled reconstruction.
     result = solve_tiled(
         captures,
         study.kx_batch[:N_CAPTURES],
@@ -265,6 +191,7 @@ def main() -> None:
         tile_batch_size=TILE_BATCH_SIZE,
     )
 
+    # Save reconstruction artifacts.
     save_metrics_summary(
         batch_metrics_records,
         path=OUTPUT_DIR / "reconstruction_metrics.png",
