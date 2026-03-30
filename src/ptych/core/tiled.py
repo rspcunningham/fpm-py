@@ -7,11 +7,10 @@ import torch.nn.functional as F
 from jaxtyping import Float, Complex
 
 from ptych.core.inverse import solve_inverse
-from ptych.core.pupil import ZernikeParams, precompute_zernike_basis
+from ptych.core.pupil import ZernikeParams, make_zernike_pupil, precompute_zernike_basis
 
 
-
-def solve_tiled(
+def _solve_tiled_from_inputs(
     captures: Float[torch.Tensor, "B H W"],
     kx_batch: Float[torch.Tensor, "B"],
     ky_batch: Float[torch.Tensor, "B"],
@@ -24,7 +23,11 @@ def solve_tiled(
     on_batch_complete: Callable[[list[tuple[int, int]], ZernikeParams, dict[str, Any]], None] | None = None,
     tile_batch_size: int = 1,
     **kwargs: Any,
-) -> Complex[torch.Tensor, "N N"]:
+) -> tuple[
+    Complex[torch.Tensor, "N N"],
+    dict[tuple[int, int], Complex[torch.Tensor, "N N"]],
+    list[dict[str, Any]],
+]:
     """Tile a full capture, reconstruct each tile independently, and stitch results.
 
     Args:
@@ -42,7 +45,7 @@ def solve_tiled(
         **kwargs: Forwarded to solve_inverse (learn_pupil, checkpoint_interval, etc.).
 
     Returns:
-        Stitched complex object at upsampled resolution.
+        Stitched object, one pupil tensor per tile, and per-batch metrics.
     """
     kx = kx_batch
     ky = ky_batch
@@ -79,6 +82,8 @@ def solve_tiled(
     out_H = n_rows * upsampled_size
     out_W = n_cols * upsampled_size
     output = torch.zeros(out_H, out_W, dtype=torch.complex64)
+    tile_pupils: dict[tuple[int, int], Complex[torch.Tensor, "N N"]] = {}
+    batch_metrics: list[dict[str, Any]] = []
 
     # 7. Build flat list of tile coordinates and iterate in batches
     tiles = [(r, c) for r in range(n_rows) for c in range(n_cols)]
@@ -126,8 +131,20 @@ def solve_tiled(
             **kwargs,
         )
 
+        batch_metrics.append({
+            "tiles": list(batch),
+            "metrics": metrics,
+        })
+
         if on_batch_complete is not None:
             on_batch_complete(batch, solved_pupil, metrics)
+
+        solved_pupil_tensor = make_zernike_pupil(
+            solved_pupil.phase_coeffs,
+            solved_pupil.amp_coeffs,
+            solved_pupil.basis,
+            solved_pupil.rad_fraction,
+        ).cpu()
 
         # e. Unpack into output grid
         for i, (r, c) in enumerate(batch):
@@ -135,9 +152,42 @@ def solve_tiled(
             out_row = r * upsampled_size
             out_col = c * upsampled_size
             output[out_row:out_row + upsampled_size, out_col:out_col + upsampled_size] = obj_cpu
+            tile_pupils[(r, c)] = solved_pupil_tensor.clone()
 
             # f. Callback
             if on_tile_complete is not None:
                 on_tile_complete(r, c, obj_cpu, solved_pupil, metrics)
 
+    return output, tile_pupils, batch_metrics
+
+
+def solve_tiled(
+    captures: Float[torch.Tensor, "B H W"],
+    kx_batch: Float[torch.Tensor, "B"],
+    ky_batch: Float[torch.Tensor, "B"],
+    pupil: ZernikeParams,
+    roi_size: int,
+    upsample_ratio: int = 4,
+    epochs: int = 1000,
+    torch_device: str | torch.device = "cpu",
+    on_tile_complete: Callable[[int, int, torch.Tensor, ZernikeParams, dict[str, Any]], None] | None = None,
+    on_batch_complete: Callable[[list[tuple[int, int]], ZernikeParams, dict[str, Any]], None] | None = None,
+    tile_batch_size: int = 1,
+    **kwargs: Any,
+) -> Complex[torch.Tensor, "N N"]:
+    """Compatibility wrapper for the prepared-input tiled solver."""
+    output, _, _ = _solve_tiled_from_inputs(
+        captures,
+        kx_batch,
+        ky_batch,
+        pupil,
+        roi_size=roi_size,
+        upsample_ratio=upsample_ratio,
+        epochs=epochs,
+        torch_device=torch_device,
+        on_tile_complete=on_tile_complete,
+        on_batch_complete=on_batch_complete,
+        tile_batch_size=tile_batch_size,
+        **kwargs,
+    )
     return output

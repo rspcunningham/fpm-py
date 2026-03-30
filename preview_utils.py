@@ -3,6 +3,8 @@ from pathlib import Path
 import numpy as np
 import torch
 from PIL import Image
+from matplotlib import pyplot as plt
+import seaborn as sns
 
 
 def save_tensor(tensor: torch.Tensor, path: Path) -> None:
@@ -84,3 +86,45 @@ def save_preview_png(
 
     arr_u8 = np.asarray(np.rint(arr_norm * 255.0), dtype=np.uint8)
     Image.fromarray(arr_u8).save(path)
+
+def save_metrics_summary(
+    batch_metrics: list[dict[str, object]],
+    *,
+    path: Path,
+) -> None:
+    sns.set_theme(style="darkgrid")
+    fig, (ax_loss, ax_capture) = plt.subplots(1, 2, figsize=(14, 5))
+
+    for batch_idx, record in enumerate(batch_metrics):
+        tiles = record["tiles"]
+        metrics = record["metrics"]
+        loss = np.asarray(metrics["loss"], dtype=np.float32)
+        tile_loss = np.asarray(metrics["tile_loss"], dtype=np.float32)
+        capture_loss = np.asarray(metrics["capture_loss"], dtype=np.float32)
+        epochs = np.arange(len(loss))
+        batch_label = f"batch {batch_idx + 1}"
+        loss_log = np.log10(np.clip(loss, 1e-12, None))
+
+        total_label = "total" if batch_idx == 0 else f"total ({batch_label})"
+        ax_loss.plot(epochs, loss_log, label=total_label, color="black", linewidth=2.2)
+
+        for tile_idx, (r, c) in enumerate(tiles):
+            tile_loss_log = np.log10(np.clip(tile_loss[:, tile_idx], 1e-12, None))
+            ax_loss.plot(epochs, tile_loss_log, label=f"tile ({r},{c})", alpha=0.9)
+
+        ax_capture.plot(np.arange(capture_loss.shape[1]), capture_loss[-1], label=batch_label)
+
+    ax_loss.set_title("Log Loss by Epoch")
+    ax_loss.set_xlabel("Epoch")
+    ax_loss.set_ylabel("log10(loss)")
+    ax_loss.legend(ncol=2, fontsize="small")
+
+    ax_capture.set_title("Final Capture Loss")
+    ax_capture.set_xlabel("Capture index")
+    ax_capture.set_ylabel("Loss")
+    if len(batch_metrics) > 1:
+        ax_capture.legend()
+
+    plt.tight_layout()
+    plt.savefig(path, dpi=150)
+    plt.close(fig)
