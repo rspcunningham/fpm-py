@@ -1,4 +1,4 @@
-run_name,run_index,roi_size,crop_size,n_captures,upsample_ratio,tile_batch_size,epochs,torch_device,tile_count,batch_count,total_runtime_sec,runtime_per_epoch_sec,final_loss,output_dir
+run_name,run_index,roi_size,crop_size,n_captures,object_to_capture_ratio,tile_batch_size,epochs,torch_device,tile_count,batch_count,total_runtime_sec,runtime_per_epoch_sec,final_loss,output_dir
 test2_crop128_run1,1,128,128,61,4,4,1000,mps,1,1,53.6836990419979,0.0536836990419979,0.004386757034808397,/Users/robin/Desktop/parasight/fpm-py/experiments/test2_fixed_tile_size_vary_fov/test2_crop128_run1
 test2_crop256_run1,1,128,256,61,4,4,1000,mps,4,1,164.68061762499565,0.16468061762499564,0.008135318756103516,/Users/robin/Desktop/parasight/fpm-py/experiments/test2_fixed_tile_size_vary_fov/test2_crop256_run1
 test2_crop512_run1,1,128,512,61,4,4,1000,mps,16,4,970.808187124996,0.24270204678124901,0.0075140310218557715,/Users/robin/Desktop/parasight/fpm-py/experiments/test2_fixed_tile_size_vary_fov/test2_crop512_run1

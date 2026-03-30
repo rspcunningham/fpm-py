@@ -326,7 +326,7 @@ def make_ideal_pupil(
     wavelength_m: float,
     sensor_pixel_size_m: float,
     magnification: float,
-    upsample_ratio: int,
+    object_to_capture_ratio: int,
     num_phase_terms: int = 1,
     num_amp_terms: int = 1,
     device: torch.device | str | None = None,
@@ -338,7 +338,7 @@ def make_ideal_pupil(
     Can be passed directly to solve_inverse for learning, or evaluated
     via make_zernike_pupil to get a tensor.
     """
-    dx_obj = sensor_pixel_size_m / (magnification * upsample_ratio)
+    dx_obj = sensor_pixel_size_m / (magnification * object_to_capture_ratio)
     fc = NA / wavelength_m  # coherent cutoff in cycles/meter
     rad_fraction_val = fc * dx_obj  # cutoff as fraction of Fourier grid width
 

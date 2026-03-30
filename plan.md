@@ -156,10 +156,10 @@ Main result:
 - `16x` was `19.21x` slower than `4x` while improving final loss by only about `0.04%`
 
 Artifacts:
-- `experiments/test5_fixed_geometry_vary_upsample_ratio/test5_comparison.png`
-- `experiments/test5_fixed_geometry_vary_upsample_ratio/test5_summary.csv`
-- `experiments/test5_fixed_geometry_vary_upsample_ratio/summary.md`
-- Per-run stitched objects and metric plots are in `experiments/test5_fixed_geometry_vary_upsample_ratio/test5_*`
+- `experiments/test5_fixed_geometry_vary_object_to_capture_ratio/test5_comparison.png`
+- `experiments/test5_fixed_geometry_vary_object_to_capture_ratio/test5_summary.csv`
+- `experiments/test5_fixed_geometry_vary_object_to_capture_ratio/summary.md`
+- Per-run stitched objects and metric plots are in `experiments/test5_fixed_geometry_vary_object_to_capture_ratio/test5_*`
 
 Interpretation:
 - Runtime rose extremely steeply with `UPSAMPLE_RATIO`.

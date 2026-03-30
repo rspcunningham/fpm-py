@@ -5,14 +5,14 @@ from ptych.core.pupil import make_ideal_pupil
 from preview_utils import save_preview_png, save_tensor, save_metrics_summary
 
 # Load dataset from nextcloud storage
-study = PtychStudy.load("usaf_test")
+study = PtychStudy.load("usaf-test")
 
 # Reconstruction geometry settings
 ROI_SIZE = 64
 CROP_SIZE = 256
 N_CAPTURES = 61
 
-UPSAMPLE_RATIO = 8
+OBJECT_TO_CAPTURE_RATIO = 8
 NA = 0.13  # Used to generate the initial pupil guess; still a free parameter.
 NUM_PHASE_TERMS = 20
 NUM_AMP_TERMS = 20
@@ -28,12 +28,12 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Prepare the initial pupil guess.
 pupil = make_ideal_pupil(
-    N=ROI_SIZE * UPSAMPLE_RATIO,
+    N=ROI_SIZE * OBJECT_TO_CAPTURE_RATIO,
     NA = NA,
     wavelength_m=study.manifest.captures[0].wavelength,
     sensor_pixel_size_m=study.manifest.sensor_pixel_size,
     magnification=study.manifest.magnification,
-    upsample_ratio=UPSAMPLE_RATIO,
+    object_to_capture_ratio=OBJECT_TO_CAPTURE_RATIO,
     num_phase_terms=NUM_PHASE_TERMS,
     num_amp_terms=NUM_AMP_TERMS,
 )
@@ -45,7 +45,7 @@ result = solve_study(
     n_captures=N_CAPTURES,
     crop_size=CROP_SIZE,
     roi_size=ROI_SIZE,
-    upsample_ratio=UPSAMPLE_RATIO,
+    object_to_capture_ratio=OBJECT_TO_CAPTURE_RATIO,
     epochs=EPOCHS,
     torch_device=TORCH_DEVICE,
     tile_batch_size=TILE_BATCH_SIZE,

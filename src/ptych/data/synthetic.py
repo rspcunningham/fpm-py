@@ -24,7 +24,7 @@ def generate_synthetic_study(
         output_dir: Directory where info.json and captures/ will be written
         object_tensor: Complex object tensor [N, N]
         pupil_tensor: Complex pupil tensor [N, N]
-        (downsample ratio is derived from object_tensor size vs manifest capture_dimensions)
+        (object-to-capture ratio is derived from object_tensor size vs manifest capture_dimensions)
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -32,14 +32,14 @@ def generate_synthetic_study(
 
     valid_captures, _, kx_batch, ky_batch = prepare_captures(manifest)
 
-    # Get the downsample ratio from the ideal object and target capture size
+    # Get the object-to-capture ratio from the ideal object and target capture size
     width, height = manifest.capture_dimensions.width, manifest.capture_dimensions.height
     ratio_x = object_tensor.shape[1] / width
     ratio_y = object_tensor.shape[0] / height
     if ratio_x != ratio_y:
-        raise ValueError(f"Downsample ratios in x and y do not match: {ratio_x} vs {ratio_y}. Please ensure the desired capture size is the same aspect ratio as the object tensor.")
+        raise ValueError(f"Object-to-capture ratios in x and y do not match: {ratio_x} vs {ratio_y}. Please ensure the desired capture size is the same aspect ratio as the object tensor.")
     if ratio_x != int(ratio_x):
-        raise ValueError(f"Downsample ratio is not an integer: {ratio_x}. Please ensure the desired capture size is an integer fraction of the object tensor size.")
+        raise ValueError(f"Object-to-capture ratio is not an integer: {ratio_x}. Please ensure the desired capture size is an integer fraction of the object tensor size.")
 
     # Generate synthetic captures
     captures = synthesize_captures(

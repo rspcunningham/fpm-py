@@ -20,7 +20,7 @@ def solve_tiled_from_inputs(
     ky_batch: Float[torch.Tensor, "B"],
     pupil: ZernikeParams,
     roi_size: int,
-    upsample_ratio: int = 4,
+    object_to_capture_ratio: int = 4,
     epochs: int = 1000,
     torch_device: str | torch.device = "cpu",
     learn_pupil: bool = True,
@@ -43,7 +43,7 @@ def solve_tiled_from_inputs(
         ky_batch: Normalized k-vectors in y [B].
         pupil: Initial ZernikeParams (re-initialized per tile batch from these values).
         roi_size: Size of each square tile (pixels).
-        upsample_ratio: Super-resolution factor per tile.
+        object_to_capture_ratio: Linear ratio between object and capture grids.
         epochs: Optimization steps per tile batch.
         torch_device: Device for solve_inverse.
         on_tile_complete: Callback(row, col, object, pupil, metrics) after each tile.
@@ -81,7 +81,7 @@ def solve_tiled_from_inputs(
         )
 
     # 5. Precompute zernike basis at tile resolution (shared across all tiles)
-    upsampled_size = roi_size * upsample_ratio
+    upsampled_size = roi_size * object_to_capture_ratio
     basis = precompute_zernike_basis(
         upsampled_size,
         num_phase_terms=pupil.basis.num_phase_terms,
@@ -114,7 +114,7 @@ def solve_tiled_from_inputs(
         for i in range(T):
             init_amp = F.interpolate(
                 batch_captures[i, 0:1].unsqueeze(1),
-                scale_factor=upsample_ratio,
+                scale_factor=object_to_capture_ratio,
                 mode="nearest",
             ).squeeze()
             init_amp = torch.sqrt(init_amp + 1e-8)
@@ -181,7 +181,7 @@ def solve_tiled(
     ky_batch: Float[torch.Tensor, "B"],
     pupil: ZernikeParams,
     roi_size: int,
-    upsample_ratio: int = 4,
+    object_to_capture_ratio: int = 4,
     epochs: int = 1000,
     torch_device: str | torch.device = "cpu",
     learn_pupil: bool = True,
@@ -199,7 +199,7 @@ def solve_tiled(
         ky_batch,
         pupil,
         roi_size=roi_size,
-        upsample_ratio=upsample_ratio,
+        object_to_capture_ratio=object_to_capture_ratio,
         epochs=epochs,
         torch_device=torch_device,
         learn_pupil=learn_pupil,

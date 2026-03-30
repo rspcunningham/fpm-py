@@ -35,10 +35,10 @@ def solve_inverse(
                 f"Object size ({object.shape[1]}) must be integer multiple of capture size ({captures.shape[2]})"
             )
 
-    upsample_ratio = object.shape[1] // captures.shape[2]
-    # renormalize k vectors
-    kx_batch = kx_batch / upsample_ratio
-    ky_batch = ky_batch / upsample_ratio
+    object_to_capture_ratio = object.shape[1] // captures.shape[2]
+    # Renormalize k-vectors from the capture grid to the object grid.
+    kx_batch = kx_batch / object_to_capture_ratio
+    ky_batch = ky_batch / object_to_capture_ratio
 
     learned_tensors: list[dict[str, torch.Tensor | float]] = []
     object_amp = torch.abs(object).clone().detach().requires_grad_(True)      # [T, N, N]
@@ -99,8 +99,8 @@ def solve_inverse(
         N2 = predicted_intensities.shape[-1]
         downsampled = F.avg_pool2d(
             predicted_intensities.reshape(T * B, 1, N2, N2),
-            kernel_size=upsample_ratio,
-            stride=upsample_ratio
+            kernel_size=object_to_capture_ratio,
+            stride=object_to_capture_ratio
         ).reshape(T, B, n, n)  # [T, B, n, n]
 
         # Compute loss across all captures
