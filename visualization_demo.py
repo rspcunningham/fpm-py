@@ -1,4 +1,5 @@
-from ptych import PtychStudy, CaptureRegion, show_study_capture
+from ptych import PtychStudy, CaptureRegion
+from ptych.preview import show_study_capture, show_object_preview
 
 study = PtychStudy.load("malaria-test")
 region = CaptureRegion.centered_square(
@@ -8,3 +9,4 @@ region = CaptureRegion.centered_square(
 )
 
 show_study_capture(study, 0, capture_region=region)
+show_object_preview("results/reconstruction_usaf_test/stitched_object.npy")
