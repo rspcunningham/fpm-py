@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from ptych import PtychStudy, solve_study
+from ptych import CaptureRegion, PtychStudy, solve_study
 from ptych.core.pupil import make_ideal_pupil
 from preview_utils import save_preview_png, save_tensor, save_metrics_summary
 
@@ -8,7 +8,7 @@ from preview_utils import save_preview_png, save_tensor, save_metrics_summary
 study = PtychStudy.load("usaf-test")
 
 # Reconstruction geometry settings
-ROI_SIZE = 64
+TILE_SIZE = 70
 CROP_SIZE = 256
 N_CAPTURES = 61
 
@@ -28,7 +28,7 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Prepare the initial pupil guess.
 pupil = make_ideal_pupil(
-    object_grid_size=ROI_SIZE * OBJECT_TO_CAPTURE_RATIO,
+    object_grid_size=TILE_SIZE * OBJECT_TO_CAPTURE_RATIO,
     numerical_aperture=NUMERICAL_APERTURE,
     wavelength_m=study.manifest.captures[0].wavelength,
     sensor_pixel_size_m=study.manifest.sensor_pixel_size,
@@ -38,13 +38,19 @@ pupil = make_ideal_pupil(
     num_amp_terms=NUM_AMP_TERMS,
 )
 
+capture_region = CaptureRegion.centered_square(
+    width=study.captures.shape[2],
+    height=study.captures.shape[1],
+    size=CROP_SIZE,
+)
+
 # Run reconstruction.
 result = solve_study(
     study,
     pupil,
     n_captures=N_CAPTURES,
-    crop_size=CROP_SIZE,
-    roi_size=ROI_SIZE,
+    capture_region=capture_region,
+    tile_size=TILE_SIZE,
     object_to_capture_ratio=OBJECT_TO_CAPTURE_RATIO,
     epochs=EPOCHS,
     torch_device=TORCH_DEVICE,

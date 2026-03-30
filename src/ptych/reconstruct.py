@@ -32,6 +32,29 @@ class StudySolveResult:
     batch_metrics: list[BatchMetricsRecord]
 
 
+@dataclass(frozen=True)
+class CaptureRegion:
+    x_left: int
+    x_right: int
+    y_top: int
+    y_bottom: int
+
+    @classmethod
+    def centered_square(cls, *, width: int, height: int, size: int) -> CaptureRegion:
+        if size > width or size > height:
+            raise ValueError(
+                f"Centered square size ({size}) exceeds capture dimensions ({height}x{width})"
+            )
+        x_left = (width - size) // 2
+        y_top = (height - size) // 2
+        return cls(
+            x_left=x_left,
+            x_right=x_left + size,
+            y_top=y_top,
+            y_bottom=y_top + size,
+        )
+
+
 def _valid_study_captures(study: PtychStudy) -> list[Capture]:
     valid_captures = [capture for capture in study.manifest.captures if capture.led_positions]
     if len(valid_captures) != study.captures.shape[0]:
@@ -49,11 +72,32 @@ def _channel_index_for_wavelength(wavelength_m: float) -> int:
     )
 
 
+def _crop_captures(
+    captures: torch.Tensor,
+    region: CaptureRegion,
+) -> torch.Tensor:
+    height = captures.shape[-2]
+    width = captures.shape[-1]
+
+    if region.x_left < 0 or region.y_top < 0:
+        raise ValueError(
+            f"Capture region has negative bounds: {region}"
+        )
+    if region.x_right > width or region.y_bottom > height:
+        raise ValueError(
+            f"Capture region {region} exceeds capture dimensions ({height}x{width})"
+        )
+    if region.x_left >= region.x_right or region.y_top >= region.y_bottom:
+        raise ValueError(f"Capture region must have positive width and height: {region}")
+
+    return captures[..., region.y_top:region.y_bottom, region.x_left:region.x_right]
+
+
 def _prepare_study_inputs(
     study: PtychStudy,
     *,
     n_captures: int = -1,
-    crop_size: int,
+    capture_region: CaptureRegion,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     valid_captures = _valid_study_captures(study)
 
@@ -70,24 +114,16 @@ def _prepare_study_inputs(
     if selected_count == 0:
         raise ValueError("n_captures must select at least one capture")
 
-    _, height, width = selected_captures.shape
-    if crop_size > height or crop_size > width:
-        raise ValueError(
-            f"crop_size ({crop_size}) exceeds capture dimensions ({height}x{width})"
-        )
-
-    top = (height - crop_size) // 2
-    left = (width - crop_size) // 2
-    cropped_captures = selected_captures[:, top:top + crop_size, left:left + crop_size]
-    demosaiced_captures = demosaic(cropped_captures)
+    demosaiced_captures = demosaic(selected_captures)
+    cropped_captures = _crop_captures(demosaiced_captures, capture_region)
 
     selected_metadata = valid_captures[:selected_count]
     channel_indices = torch.tensor(
         [_channel_index_for_wavelength(capture.wavelength) for capture in selected_metadata],
-        device=demosaiced_captures.device,
+        device=cropped_captures.device,
     )
-    capture_indices = torch.arange(selected_count, device=demosaiced_captures.device)
-    reconstruction_captures = demosaiced_captures[capture_indices, channel_indices]
+    capture_indices = torch.arange(selected_count, device=cropped_captures.device)
+    reconstruction_captures = cropped_captures[capture_indices, channel_indices]
 
     return (
         reconstruction_captures / reconstruction_captures.max(),
@@ -101,8 +137,8 @@ def solve_study(
     pupil: ZernikeParams,
     *,
     n_captures: int = -1,
-    crop_size: int,
-    roi_size: int,
+    capture_region: CaptureRegion,
+    tile_size: int,
     object_to_capture_ratio: int = 4,
     epochs: int = 1000,
     torch_device: str | torch.device = "cpu",
@@ -117,14 +153,14 @@ def solve_study(
     captures, kx_batch, ky_batch = _prepare_study_inputs(
         study,
         n_captures=n_captures,
-        crop_size=crop_size,
+        capture_region=capture_region,
     )
     stitched_object, tile_pupils, batch_metrics = solve_tiled_from_inputs(
         captures,
         kx_batch,
         ky_batch,
         pupil,
-        roi_size=roi_size,
+        tile_size=tile_size,
         object_to_capture_ratio=object_to_capture_ratio,
         epochs=epochs,
         torch_device=torch_device,
