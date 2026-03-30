@@ -1,21 +1,21 @@
-import json
+from dataclasses import replace
+from pathlib import Path
+
 import numpy as np
 import torch
-from typing import cast
 from PIL import Image
 
+from ptych import PtychStudy
 from ptych.data.synthetic import generate_synthetic_study
-from ptych.data.parse import parse_manifest
 from ptych.core.pupil import make_ideal_pupil, make_zernike_pupil
 
-study_dir = "demo/synthetic"
+IDEAL_IMAGE_PATH = Path("demo/synthetic/ideal.png")
+OUTPUT_DIR = Path("demo/synthetic_usaf_test")
 
-# Load manifest to derive optical parameters and downsample ratio
-with open(f"{study_dir}/info.json") as f:
-    manifest = parse_manifest(cast(dict[str, object], json.load(f)))
+study = PtychStudy.load("usaf_test")
 
 # Load ideal.png and convert to grayscale float [0, 1]
-img = Image.open(f"{study_dir}/ideal.png").convert("L")
+img = Image.open(IDEAL_IMAGE_PATH).convert("L")
 amplitude = np.array(img, dtype=np.float32) / 255.0
 
 # Center-crop to a square so the current synthetic pipeline receives NxN tensors.
@@ -30,9 +30,18 @@ amplitude = amplitude[top:top + crop_size, left:left + crop_size]
 phase = amplitude * 2 * np.pi
 object_tensor = torch.from_numpy(amplitude * np.exp(1j * phase)).to(torch.complex64)
 
+synthetic_manifest = replace(
+    study.manifest,
+    capture_dimensions=replace(
+        study.manifest.capture_dimensions,
+        width=crop_size,
+        height=crop_size,
+    ),
+)
+
 # Derive downsample ratio from object size vs manifest capture dimensions
 N = object_tensor.shape[0]
-capture_size = manifest.capture_dimensions.height
+capture_size = synthetic_manifest.capture_dimensions.height
 assert N % capture_size == 0, (
     f"Object size ({N}) must be integer multiple of capture size ({capture_size})"
 )
@@ -41,10 +50,10 @@ downsample_ratio = N // capture_size
 pupil_params = make_ideal_pupil(
     N=N,
     NA=0.13,
-    wavelength_m=manifest.captures[0].wavelength,
-    sensor_pixel_size_m=manifest.sensor_pixel_size,
-    magnification=manifest.magnification,
-    downsample_ratio=downsample_ratio,
+    wavelength_m=synthetic_manifest.captures[0].wavelength,
+    sensor_pixel_size_m=synthetic_manifest.sensor_pixel_size,
+    magnification=synthetic_manifest.magnification,
+    upsample_ratio=downsample_ratio,
 )
 pupil_tensor = make_zernike_pupil(
     pupil_params.phase_coeffs, pupil_params.amp_coeffs,
@@ -53,7 +62,8 @@ pupil_tensor = make_zernike_pupil(
 
 # Run synthetic study generation
 generate_synthetic_study(
-    dir_path=study_dir,
+    manifest=synthetic_manifest,
+    output_dir=OUTPUT_DIR,
     object_tensor=object_tensor,
-    pupil_tensor=pupil_tensor
+    pupil_tensor=pupil_tensor,
 )

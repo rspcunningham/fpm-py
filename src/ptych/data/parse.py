@@ -1,5 +1,7 @@
-"""Parsing utilities for study manifest data."""
+"""Parsing and serialization utilities for study manifest data."""
+import json
 from datetime import datetime
+from pathlib import Path
 from typing import cast
 from uuid import UUID
 
@@ -72,6 +74,54 @@ def _optional_num(data: dict[str, object], key: str) -> float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ManifestParseError(f"Expected number for '{key}', got {type(value).__name__}")
     return float(value)
+
+
+def manifest_to_dict(manifest: StudyManifest) -> dict[str, object]:
+    """Serialize a StudyManifest into the JSON-compatible manifest shape."""
+    captures: list[dict[str, object]] = []
+    for capture in manifest.captures:
+        capture_data: dict[str, object] = {
+            "filename": capture.filename,
+            "wavelength": capture.wavelength,
+            "led_positions": [
+                {
+                    "x": position.x,
+                    "y": position.y,
+                    "z": position.z,
+                }
+                for position in capture.led_positions
+            ],
+        }
+        if capture.captured_at is not None:
+            capture_data["captured_at"] = capture.captured_at.isoformat()
+        if capture.exposure is not None:
+            capture_data["exposure"] = capture.exposure
+        captures.append(capture_data)
+
+    manifest_data: dict[str, object] = {
+        "study_id": str(manifest.study_id),
+        "created_at": manifest.created_at.isoformat(),
+        "version": manifest.version,
+        "magnification": manifest.magnification,
+        "sensor_pixel_size": manifest.sensor_pixel_size,
+        "capture_dimensions": {
+            "width": manifest.capture_dimensions.width,
+            "height": manifest.capture_dimensions.height,
+        },
+        "captures": captures,
+    }
+    if manifest.metadata:
+        manifest_data["metadata"] = manifest.metadata
+    return manifest_data
+
+
+def write_manifest(manifest: StudyManifest, path: str | Path) -> None:
+    """Write a StudyManifest to disk as pretty-printed JSON."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as fh:
+        json.dump(manifest_to_dict(manifest), fh, indent=4)
+        fh.write("\n")
 
 
 def parse_manifest(data: dict[str, object]) -> StudyManifest:

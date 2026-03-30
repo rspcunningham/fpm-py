@@ -4,7 +4,7 @@ from ptych import PtychStudy, solve_study
 from ptych.core.pupil import make_ideal_pupil
 from preview_utils import save_preview_png, save_tensor, save_metrics_summary
 
-# Load dataset
+# Load dataset from nextcloud storage
 study = PtychStudy.load("usaf_test")
 
 # Reconstruction geometry settings

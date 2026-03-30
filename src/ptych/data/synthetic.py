@@ -1,38 +1,34 @@
 from pathlib import Path
-import json
-from typing import cast
 
 import numpy as np
 import torch
 from jaxtyping import Complex
 
 from ptych.core.synthetic import synthesize_captures
-from ptych.data.parse import parse_manifest
+from ptych.data.parse import write_manifest
+from ptych.data.types import StudyManifest
 from ptych.data.utils import prepare_captures
 
+
 def generate_synthetic_study(
-    dir_path: str | Path,
+    manifest: StudyManifest,
+    output_dir: str | Path,
     object_tensor: Complex[torch.Tensor, "N N"],
     pupil_tensor: Complex[torch.Tensor, "N N"],
 ) -> None:
     """
-    Generate synthetic captures from info.json and save to captures/ directory.
-
-    Loads the manifest from dir_path/info.json, computes k-vectors from LED
-    positions, runs the forward model, and saves .npy files to dir_path/captures/.
+    Generate a synthetic study dataset from an in-memory manifest.
 
     Args:
-        dir_path: Directory containing info.json
+        manifest: Manifest describing the target synthetic dataset
+        output_dir: Directory where info.json and captures/ will be written
         object_tensor: Complex object tensor [N, N]
         pupil_tensor: Complex pupil tensor [N, N]
         (downsample ratio is derived from object_tensor size vs manifest capture_dimensions)
     """
-    dir_path = Path(dir_path)
-
-    # Load and parse manifest
-    manifest_path = dir_path / "info.json"
-    with open(manifest_path) as f:
-        manifest = parse_manifest(cast(dict[str, object], json.load(f)))
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    write_manifest(manifest, output_dir / "info.json")
 
     valid_captures, _, kx_batch, ky_batch = prepare_captures(manifest)
 
@@ -51,8 +47,8 @@ def generate_synthetic_study(
     )
 
     # Save to captures/ directory
-    captures_dir = dir_path / "captures"
-    captures_dir.mkdir(exist_ok=True)
+    captures_dir = output_dir / "captures"
+    captures_dir.mkdir(parents=True, exist_ok=True)
 
     for i, cap in enumerate(valid_captures):
         img = captures[i].detach().cpu().numpy()
