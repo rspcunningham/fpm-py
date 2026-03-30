@@ -398,9 +398,20 @@ class NextcloudShareTransport:
             with progress_lock:
                 progress.update(delta)
 
-        max_workers = min(_download_workers(), len(capture_files)) or 1
+        files_to_download: list[tuple[str, Path]] = []
+        already_downloaded_bytes = 0
+        for filename in capture_files:
+            dest = _safe_destination(captures_dir, filename)
+            expected_size = capture_entries[filename].size
+            if dest.is_file() and expected_size is not None and dest.stat().st_size == expected_size:
+                already_downloaded_bytes += expected_size
+            else:
+                files_to_download.append((filename, dest))
+
+        max_workers = min(_download_workers(), len(files_to_download)) if files_to_download else 1
         with tqdm(
             total=total_bytes,
+            initial=already_downloaded_bytes,
             desc=description,
             dynamic_ncols=True,
             unit="B",
@@ -418,10 +429,10 @@ class NextcloudShareTransport:
                             f"{dataset_id}/captures/{filename}",
                         ),
                         self.share_id,
-                        _safe_destination(captures_dir, filename),
+                        dest,
                         progress_callback=update_progress,
                     )
-                    for filename in capture_files
+                    for filename, dest in files_to_download
                 ]
                 for future in futures:
                     future.result()

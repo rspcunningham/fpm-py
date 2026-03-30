@@ -6,12 +6,12 @@ import json
 import os
 import shutil
 import tempfile
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import BinaryIO, Protocol, cast
-from uuid import uuid4
 
 from ptych.data.parse import ManifestParseError, parse_manifest
 
@@ -19,6 +19,10 @@ from .nextcloud_share import NextcloudShareTransport
 
 
 DEFAULT_CACHE_DIR = Path.home() / ".cache" / "ptych" / "datasets"
+DEFAULT_DOWNLOAD_MAX_ATTEMPTS = 3
+DEFAULT_DOWNLOAD_RETRY_DELAY_SECONDS = 5
+
+TRANSIENT_DOWNLOAD_ERRORS = (ConnectionResetError, ConnectionError, TimeoutError, OSError)
 DEFAULT_NEXTCLOUD_BASE_URL = "http://dqe.asuscomm.com:8080"
 DEFAULT_NEXTCLOUD_SHARE_ID = "SLbNBTqK9firqZM"
 
@@ -110,7 +114,7 @@ class NextcloudDatasetCache:
         dataset_root.mkdir(parents=True, exist_ok=True)
         data_path = dataset_root / "data"
         backup_path = dataset_root / "data.previous"
-        staging_dir = dataset_root / f".staging-{uuid4().hex}"
+        staging_dir = dataset_root / ".staging"
         staging_data_path = staging_dir / "data"
 
         if backup_path.exists():
@@ -118,21 +122,26 @@ class NextcloudDatasetCache:
 
         staging_dir.mkdir(parents=True, exist_ok=True)
 
-        try:
-            self.transport.download_dataset(dataset_id, staging_data_path)
-            metadata = self._validate_extracted_dataset(staging_data_path, dataset_id)
+        last_exc: Exception | None = None
+        for attempt in range(1, DEFAULT_DOWNLOAD_MAX_ATTEMPTS + 1):
+            try:
+                self.transport.download_dataset(dataset_id, staging_data_path)
+                break
+            except DatasetValidationError:
+                shutil.rmtree(staging_dir, ignore_errors=True)
+                raise
+            except Exception as exc:
+                if not isinstance(exc.__context__ or exc, TRANSIENT_DOWNLOAD_ERRORS) and not isinstance(exc, TRANSIENT_DOWNLOAD_ERRORS):
+                    raise NextcloudDatasetCacheError(
+                        f"Failed to fetch dataset '{dataset_id}': {exc}"
+                    ) from exc
 
-            if data_path.exists():
-                data_path.rename(backup_path)
-
-            staging_data_path.rename(data_path)
-            self._write_metadata(dataset_id, metadata)
-
-            if backup_path.exists():
-                shutil.rmtree(backup_path)
-
-            return data_path
-        except Exception as exc:
+                last_exc = exc
+                if attempt < DEFAULT_DOWNLOAD_MAX_ATTEMPTS:
+                    delay = DEFAULT_DOWNLOAD_RETRY_DELAY_SECONDS * attempt
+                    print(f"Download attempt {attempt} failed ({exc}), retrying in {delay}s...")
+                    time.sleep(delay)
+        else:
             if not data_path.exists() and backup_path.exists():
                 backup_path.rename(data_path)
 
@@ -145,10 +154,26 @@ class NextcloudDatasetCache:
                 self._write_metadata(dataset_id, failed_metadata)
 
             raise NextcloudDatasetCacheError(
-                f"Failed to fetch dataset '{dataset_id}': {exc}"
-            ) from exc
-        finally:
+                f"Failed to fetch dataset '{dataset_id}' after {DEFAULT_DOWNLOAD_MAX_ATTEMPTS} attempts: {last_exc}"
+            ) from last_exc
+
+        try:
+            metadata = self._validate_extracted_dataset(staging_data_path, dataset_id)
+        except DatasetValidationError:
             shutil.rmtree(staging_dir, ignore_errors=True)
+            raise
+
+        if data_path.exists():
+            data_path.rename(backup_path)
+
+        staging_data_path.rename(data_path)
+        self._write_metadata(dataset_id, metadata)
+        shutil.rmtree(staging_dir, ignore_errors=True)
+
+        if backup_path.exists():
+            shutil.rmtree(backup_path)
+
+        return data_path
 
     def _validate_extracted_dataset(self, dataset_root: Path, dataset_id: str) -> DatasetMetadata:
         manifest_path = dataset_root / "info.json"
