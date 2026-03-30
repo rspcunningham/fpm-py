@@ -9,6 +9,7 @@ from jaxtyping import Complex
 from ptych.core.pupil import ZernikeParams
 
 
+# Tile start in capture-space as (y_start, x_start).
 type TileCoord = tuple[int, int]
 
 
@@ -25,4 +26,4 @@ class BatchMetricsRecord(TypedDict):
 
 type CheckpointCallback = Callable[[int, Complex[torch.Tensor, "T N N"]], None]
 type TileCompleteCallback = Callable[[int, int, torch.Tensor, ZernikeParams, InverseMetrics], None]
-type BatchCompleteCallback = Callable[[list[TileCoord], ZernikeParams, InverseMetrics], None]
+type BatchCompleteCallback = Callable[[list[TileCoord], list[ZernikeParams], InverseMetrics], None]

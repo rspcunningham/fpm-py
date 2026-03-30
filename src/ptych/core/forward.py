@@ -9,7 +9,7 @@ ifft2 = cast(Callable[..., torch.Tensor], partial(torch.fft.ifft2, norm="ortho")
 
 def forward_model(
     object_tensor: Complex[torch.Tensor, "T N N"],
-    pupil_tensor: Complex[torch.Tensor, "N N"],
+    pupil_tensor: Complex[torch.Tensor, "T N N"],
     kx: Float[torch.Tensor, "B"],
     ky: Float[torch.Tensor, "B"]
 ) -> Float[torch.Tensor, "T B N N"]:
@@ -18,7 +18,7 @@ def forward_model(
 
     Args:
         object_tensor (torch.Tensor): Object tensor [T, N, N] (0, 1)
-        pupil_tensor (torch.Tensor): Pupil tensor [N, N] -- DC at [0, 0]
+        pupil_tensor (torch.Tensor): Pupil tensor [T, N, N] -- DC at [0, 0]
         kx (torch.Tensor): Wavevector shift(s) in x direction, normalized. Tensor [B] (-0.5, 0.5)
         ky (torch.Tensor): Wavevector shift(s) in y direction, normalized. Tensor [B] (-0.5, 0.5)
 
@@ -50,7 +50,7 @@ def forward_model(
     objects_fourier = fft2(tilted_objects)  # [T, B, N, N]
 
     # Apply pupil filter (broadcast over tile and batch dimensions)
-    filtered_fourier = pupil_tensor * objects_fourier  # [T, B, N, N]
+    filtered_fourier = pupil_tensor[:, None] * objects_fourier  # [T, B, N, N]
 
     # Batch inverse FFT
     complex_image_fields = ifft2(filtered_fourier)  # [T, B, N, N]

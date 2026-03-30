@@ -5,7 +5,25 @@ from jaxtyping import Float, Complex
 
 from ptych.core.forward import forward_model
 from ptych.core.metrics import CheckpointCallback, InverseMetrics
-from ptych.core.pupil import ZernikeParams, make_zernike_pupil
+from ptych.core.pupil import ZernikeBasis, ZernikeParams, make_zernike_pupil
+
+
+def _repeat_initial_pupil(
+    pupil: ZernikeParams,
+    num_tiles: int,
+    device: torch.device | str,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, ZernikeBasis]:
+    phase_coeffs = (
+        pupil.phase_coeffs.clone().detach().to(device).unsqueeze(0).repeat(num_tiles, 1)
+    )
+    amp_coeffs = (
+        pupil.amp_coeffs.clone().detach().to(device).unsqueeze(0).repeat(num_tiles, 1)
+    )
+    rad_fraction = (
+        pupil.rad_fraction.clone().detach().to(device).reshape(1).repeat(num_tiles)
+    )
+    basis = pupil.basis.to(device)
+    return phase_coeffs, amp_coeffs, rad_fraction, basis
 
 
 def solve_inverse(
@@ -20,7 +38,7 @@ def solve_inverse(
     torch_device: str | torch.device = "cpu",
     on_checkpoint: CheckpointCallback | None = None,
     checkpoint_interval: int = 50,
-) -> tuple[Complex[torch.Tensor, "T N N"], ZernikeParams, InverseMetrics]:
+) -> tuple[Complex[torch.Tensor, "T N N"], list[ZernikeParams], InverseMetrics]:
 
     # Move all tensors to the specified device
     captures = captures.to(torch_device)
@@ -49,11 +67,12 @@ def solve_inverse(
     intensity_scale = torch.ones(B, device=torch_device).requires_grad_(True)  # [B]
     learned_tensors.append({'params': intensity_scale, 'lr': 1e-2})
 
-    # Clone/detach coefficients and rad_fraction (basis is fixed, not cloned)
-    phase_coeffs = pupil.phase_coeffs.clone().detach().to(torch_device)
-    amp_coeffs = pupil.amp_coeffs.clone().detach().to(torch_device)
-    rad_fraction = pupil.rad_fraction.clone().detach().to(torch_device)
-    basis = pupil.basis.to(torch_device)
+    # Repeat the initial pupil parameters so each tile has an independent pupil.
+    phase_coeffs, amp_coeffs, rad_fraction, basis = _repeat_initial_pupil(
+        pupil,
+        T,
+        torch_device,
+    )
 
     if learn_pupil:
         phase_coeffs = phase_coeffs.requires_grad_(True)
@@ -62,8 +81,6 @@ def solve_inverse(
         learned_tensors.append({'params': phase_coeffs, 'lr': 1e-3})
         learned_tensors.append({'params': amp_coeffs, 'lr': 1e-3})
         learned_tensors.append({'params': rad_fraction, 'lr': 1e-3})
-
-    working_zernike = ZernikeParams(phase_coeffs, amp_coeffs, basis, rad_fraction)
 
     if learn_k_vectors:
         kx_batch = kx_batch.clone().detach().requires_grad_(True)
@@ -84,12 +101,15 @@ def solve_inverse(
 
     # Training loop
     for epoch in tqdm(range(epochs), desc="Solving inverse model..."):
-        pupil_tensor = make_zernike_pupil(
-            working_zernike.phase_coeffs,
-            working_zernike.amp_coeffs,
-            working_zernike.basis,
-            working_zernike.rad_fraction,
-        )
+        pupil_tensor = torch.stack([
+            make_zernike_pupil(
+                phase_coeffs[tile_idx],
+                amp_coeffs[tile_idx],
+                basis,
+                rad_fraction[tile_idx],
+            )
+            for tile_idx in range(T)
+        ])
 
         # Reconstruct complex object from amplitude and phase
         object_complex = object_amp * torch.exp(1j * object_phase)  # [T, N, N]
@@ -138,11 +158,14 @@ def solve_inverse(
 
     return (
         object_final,
-        ZernikeParams(
-            working_zernike.phase_coeffs.detach(),
-            working_zernike.amp_coeffs.detach(),
-            working_zernike.basis,
-            working_zernike.rad_fraction.detach(),
-        ),
+        [
+            ZernikeParams(
+                phase_coeffs[tile_idx].detach(),
+                amp_coeffs[tile_idx].detach(),
+                basis,
+                rad_fraction[tile_idx].detach(),
+            )
+            for tile_idx in range(T)
+        ],
         metrics,
     )

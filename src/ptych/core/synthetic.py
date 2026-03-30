@@ -29,7 +29,12 @@ def synthesize_captures(
     ky_batch = ky_batch / object_to_capture_ratio
 
     # Run forward model at full resolution (add T=1 batch dim)
-    intensities = forward_model(object_tensor[None], pupil_tensor, kx_batch, ky_batch)  # [1, B, N, N]
+    intensities = forward_model(
+        object_tensor[None],
+        pupil_tensor[None],
+        kx_batch,
+        ky_batch,
+    )  # [1, B, N, N]
     intensities = intensities.squeeze(0)  # [B, N, N]
 
     # Reduce full-resolution intensities to the capture grid with average pooling
