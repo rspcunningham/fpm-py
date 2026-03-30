@@ -12,23 +12,26 @@ from ptych import PtychStudy, solve_tiled
 from ptych.core.pupil import ZernikeParams, make_ideal_pupil, make_zernike_pupil
 from ptych.data.bayer import demosaic
 
+
+study = PtychStudy.load("usaf_test")
+
 # Experiment settings
-# BASE_DIR = Path("./demo/synthetic")
-BASE_DIR = Path("./demo/real")
-OUTPUT_DIR = BASE_DIR / "output_full"
+OUTPUT_DIR = Path("./results")
 
 ROI_SIZE = 128
-CROP_SIZE = 512
-N_CAPTURES = 145
+CROP_SIZE = 256
+N_CAPTURES = 61
 
 UPSAMPLE_RATIO = 8
 NA = 0.13 # used to generate the initial guess of pupil, still a free param.
 NUM_PHASE_TERMS = 20
 NUM_AMP_TERMS = 20
 
-TORCH_DEVICE = "mps"
-TILE_BATCH_SIZE = 2
+TORCH_DEVICE = "mps" # switch to "cpu" or "cuda"
+TILE_BATCH_SIZE = 4
 EPOCHS = 150
+
+# main code block starts at line 236
 
 TileCompleteCallback = Callable[[int, int, torch.Tensor, ZernikeParams, dict[str, Any]], None]
 BatchCompleteCallback = Callable[[list[tuple[int, int]], ZernikeParams, dict[str, Any]], None]
@@ -233,7 +236,6 @@ def make_callbacks(
 def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    study = PtychStudy.from_disk(BASE_DIR)
     captures = prepare_captures(
         study,
         n_captures=N_CAPTURES,

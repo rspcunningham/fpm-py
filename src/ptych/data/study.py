@@ -67,3 +67,10 @@ class PtychStudy:
             kx_batch=kx_batch,
             ky_batch=ky_batch,
         )
+
+    @classmethod
+    def load(cls, dataset_id: str) -> 'PtychStudy':
+        from ptych.data.download.dataset_cache import NextcloudDatasetCache
+
+        cache = NextcloudDatasetCache()
+        return cls.from_disk(cache.fetch_dataset(dataset_id))

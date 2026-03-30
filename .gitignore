@@ -17,3 +17,5 @@ tmp/
 demo/real/output*
 demo/synthetic/output
 demo/synthetic/captures
+
+results/
