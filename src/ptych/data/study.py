@@ -69,8 +69,12 @@ class PtychStudy:
         )
 
     @classmethod
-    def load(cls, dataset_id: str) -> 'PtychStudy':
+    def load(cls, dataset: str | Path) -> 'PtychStudy':
+        candidate_path = Path(dataset)
+        if candidate_path.exists():
+            return cls.from_disk(candidate_path)
+
         from ptych.data.download.dataset_cache import NextcloudDatasetCache
 
         cache = NextcloudDatasetCache()
-        return cls.from_disk(cache.fetch_dataset(dataset_id))
+        return cls.from_disk(cache.fetch_dataset(str(dataset)))

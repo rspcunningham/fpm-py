@@ -26,6 +26,15 @@ Install dependencies:
 uv sync
 ```
 
+Load a study either by local path or by dataset name:
+
+```python
+from ptych import PtychStudy
+
+local_study = PtychStudy.load("results/synthetic_usaf_test")
+cached_or_remote_study = PtychStudy.load("usaf-test")
+```
+
 ## Demos
 
 ### Synthetic Data Demo
@@ -41,6 +50,14 @@ What it does:
 - Builds a complex object and an ideal pupil
 - Simulates captures with the shared forward model
 - Writes a synthetic study to `results/synthetic_usaf_test/`
+
+You can reconstruct that generated study with:
+
+```python
+from ptych import PtychStudy
+
+study = PtychStudy.load("results/synthetic_usaf_test")
+```
 
 Output layout:
 
@@ -140,7 +157,12 @@ demo_images/
 
 ## Dataset Access
 
-`PtychStudy.load(dataset_id)` resolves datasets through the local cache in `~/.cache/ptych/datasets` and downloads missing datasets through the configured Nextcloud transport.
+`PtychStudy.load(...)` accepts either:
+
+- a local study directory path containing `info.json` and `captures/`
+- a dataset name such as `usaf-test`
+
+For dataset names, the loader resolves through the local cache in `~/.cache/ptych/datasets` and downloads missing datasets through the configured Nextcloud transport.
 
 The demos currently use:
 
