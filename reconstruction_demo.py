@@ -23,7 +23,7 @@ TILE_BATCH_SIZE = 16
 EPOCHS = 150
 
 # Output directory
-OUTPUT_DIR = Path("./results")
+OUTPUT_DIR = Path("results/reconstruction_usaf_test")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Prepare the initial pupil guess.
