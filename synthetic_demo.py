@@ -54,8 +54,8 @@ object_to_capture_ratio = N // capture_size
 print(f"Using object-to-capture ratio: {object_to_capture_ratio}")
 
 pupil_params = make_ideal_pupil(
-    N=N,
-    NA=0.13,
+    object_grid_size=N,
+    numerical_aperture=0.13,
     wavelength_m=synthetic_manifest.captures[0].wavelength,
     sensor_pixel_size_m=synthetic_manifest.sensor_pixel_size,
     magnification=synthetic_manifest.magnification,

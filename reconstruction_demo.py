@@ -13,7 +13,7 @@ CROP_SIZE = 256
 N_CAPTURES = 61
 
 OBJECT_TO_CAPTURE_RATIO = 8
-NA = 0.13  # Used to generate the initial pupil guess; still a free parameter.
+NUMERICAL_APERTURE = 0.13  # Used to generate the initial pupil guess; still a free parameter.
 NUM_PHASE_TERMS = 20
 NUM_AMP_TERMS = 20
 
@@ -28,8 +28,8 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Prepare the initial pupil guess.
 pupil = make_ideal_pupil(
-    N=ROI_SIZE * OBJECT_TO_CAPTURE_RATIO,
-    NA = NA,
+    object_grid_size=ROI_SIZE * OBJECT_TO_CAPTURE_RATIO,
+    numerical_aperture=NUMERICAL_APERTURE,
     wavelength_m=study.manifest.captures[0].wavelength,
     sensor_pixel_size_m=study.manifest.sensor_pixel_size,
     magnification=study.manifest.magnification,

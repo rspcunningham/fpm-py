@@ -321,8 +321,8 @@ def init_rad_fraction(
     return rad
 
 def make_ideal_pupil(
-    N: int,
-    NA: float,
+    object_grid_size: int,
+    numerical_aperture: float,
     wavelength_m: float,
     sensor_pixel_size_m: float,
     magnification: float,
@@ -333,17 +333,22 @@ def make_ideal_pupil(
 ) -> ZernikeParams:
     """Create an ideal (aberration-free) Zernike pupil parameterization.
 
-    Computes the pupil radius from NA and optical parameters, then returns
-    ZernikeParams with uniform amplitude (piston only) and zero phase.
-    Can be passed directly to solve_inverse for learning, or evaluated
-    via make_zernike_pupil to get a tensor.
+    Computes the pupil radius from the numerical aperture and optical
+    parameters, then returns ZernikeParams with uniform amplitude
+    (piston only) and zero phase. Can be passed directly to solve_inverse
+    for learning, or evaluated via make_zernike_pupil to get a tensor.
     """
     dx_obj = sensor_pixel_size_m / (magnification * object_to_capture_ratio)
-    fc = NA / wavelength_m  # coherent cutoff in cycles/meter
+    fc = numerical_aperture / wavelength_m  # coherent cutoff in cycles/meter
     rad_fraction_val = fc * dx_obj  # cutoff as fraction of Fourier grid width
 
     _device = device or "cpu"
-    basis = precompute_zernike_basis(N, num_phase_terms=num_phase_terms, num_amp_terms=num_amp_terms, device=_device)
+    basis = precompute_zernike_basis(
+        object_grid_size,
+        num_phase_terms=num_phase_terms,
+        num_amp_terms=num_amp_terms,
+        device=_device,
+    )
     phase_coeffs = init_phase_coeffs(num_phase_terms, device=_device, requires_grad=False)
     amp_coeffs = init_amp_coeffs(num_amp_terms, device=_device, requires_grad=False)
     rad_fraction = init_rad_fraction(rad_fraction_val, device=_device, requires_grad=False)
