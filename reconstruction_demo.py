@@ -14,7 +14,7 @@ study = PtychStudy.load(dataset)
 # Reconstruction geometry settings
 TILE_SIZE = 64
 CROP_SIZE = 256
-N_CAPTURES = 61
+CAPTURE_SELECTION = [(0, 27), (61,)]
 
 OBJECT_TO_CAPTURE_RATIO = 4
 NUMERICAL_APERTURE = 0.13  # Used to generate the initial pupil guess; still a free parameter.
@@ -57,7 +57,7 @@ def save_checkpoint(epoch: int, merged_object: torch.Tensor) -> None:
 result = solve_study(
     study,
     pupil,
-    n_captures=N_CAPTURES,
+    capture_selector=CAPTURE_SELECTION,
     capture_region=capture_region,
     tile_size=TILE_SIZE,
     object_to_capture_ratio=OBJECT_TO_CAPTURE_RATIO,
