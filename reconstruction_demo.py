@@ -5,7 +5,7 @@ from ptych.core.pupil import make_ideal_pupil
 from preview_utils import save_preview_png, save_tensor, save_metrics_summary
 
 # Load dataset from nextcloud storage
-study = PtychStudy.load("malaria-test")
+study = PtychStudy.load("usaf-test")
 
 # Reconstruction geometry settings
 TILE_SIZE = 70
