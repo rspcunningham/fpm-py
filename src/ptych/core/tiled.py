@@ -9,6 +9,7 @@ from ptych.core.metrics import (
     BatchCompleteCallback,
     BatchMetricsRecord,
     CheckpointCallback,
+    MergedCheckpointCallback,
     TileCompleteCallback,
 )
 from ptych.core.pupil import ZernikeParams, make_zernike_pupil, precompute_zernike_basis
@@ -70,7 +71,7 @@ def solve_tiled_from_inputs(
     torch_device: str | torch.device = "cpu",
     learn_pupil: bool = True,
     learn_k_vectors: bool = False,
-    on_checkpoint: CheckpointCallback | None = None,
+    on_checkpoint: MergedCheckpointCallback | None = None,
     checkpoint_interval: int = 50,
     on_tile_complete: TileCompleteCallback | None = None,
     on_batch_complete: BatchCompleteCallback | None = None,
@@ -165,6 +166,34 @@ def solve_tiled_from_inputs(
             pupil.rad_fraction.clone().detach(),
         )
 
+        # Wrap user's merged checkpoint callback for this batch
+        inner_checkpoint: CheckpointCallback | None = None
+        if on_checkpoint is not None:
+            def _make_merged_checkpoint_cb(
+                batch: list[_TilePlan],
+                output: torch.Tensor,
+                object_to_capture_ratio: int,
+                user_cb: MergedCheckpointCallback,
+            ) -> CheckpointCallback:
+                def _cb(epoch: int, objects: torch.Tensor) -> None:
+                    merged = output.clone()
+                    for i, tile in enumerate(batch):
+                        obj_cpu = objects[i].detach().cpu()
+                        crop_top = tile.y.trim * object_to_capture_ratio
+                        crop_left = tile.x.trim * object_to_capture_ratio
+                        crop_height = tile.y.length * object_to_capture_ratio
+                        crop_width = tile.x.length * object_to_capture_ratio
+                        obj_owned = obj_cpu[
+                            crop_top : crop_top + crop_height,
+                            crop_left : crop_left + crop_width,
+                        ]
+                        out_row = tile.y.output_start * object_to_capture_ratio
+                        out_col = tile.x.output_start * object_to_capture_ratio
+                        merged[out_row : out_row + crop_height, out_col : out_col + crop_width] = obj_owned
+                    user_cb(epoch, merged)
+                return _cb
+            inner_checkpoint = _make_merged_checkpoint_cb(batch, output, object_to_capture_ratio, on_checkpoint)
+
         # d. Solve batch
         result_objects, solved_pupils, metrics = solve_inverse(
             batch_captures,
@@ -176,7 +205,7 @@ def solve_tiled_from_inputs(
             learn_pupil=learn_pupil,
             learn_k_vectors=learn_k_vectors,
             torch_device=torch_device,
-            on_checkpoint=on_checkpoint,
+            on_checkpoint=inner_checkpoint,
             checkpoint_interval=checkpoint_interval,
         )
 
@@ -234,7 +263,7 @@ def solve_tiled(
     torch_device: str | torch.device = "cpu",
     learn_pupil: bool = True,
     learn_k_vectors: bool = False,
-    on_checkpoint: CheckpointCallback | None = None,
+    on_checkpoint: MergedCheckpointCallback | None = None,
     checkpoint_interval: int = 50,
     on_tile_complete: TileCompleteCallback | None = None,
     on_batch_complete: BatchCompleteCallback | None = None,

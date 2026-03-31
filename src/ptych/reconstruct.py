@@ -8,7 +8,7 @@ from jaxtyping import Complex
 from ptych.core.metrics import (
     BatchCompleteCallback,
     BatchMetricsRecord,
-    CheckpointCallback,
+    MergedCheckpointCallback,
     TileCompleteCallback,
 )
 from ptych.core.pupil import ZernikeParams
@@ -144,7 +144,7 @@ def solve_study(
     torch_device: str | torch.device = "cpu",
     learn_pupil: bool = True,
     learn_k_vectors: bool = False,
-    on_checkpoint: CheckpointCallback | None = None,
+    on_checkpoint: MergedCheckpointCallback | None = None,
     checkpoint_interval: int = 50,
     on_tile_complete: TileCompleteCallback | None = None,
     on_batch_complete: BatchCompleteCallback | None = None,
