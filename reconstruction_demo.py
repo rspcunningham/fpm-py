@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import torch
+
 from ptych import CaptureRegion, PtychStudy, solve_study
 from ptych.core.pupil import make_ideal_pupil
 from preview_utils import save_preview_png, save_tensor, save_metrics_summary
@@ -46,6 +48,11 @@ capture_region = CaptureRegion.centered_square(
     size=CROP_SIZE,
 )
 
+
+def save_checkpoint(epoch: int, merged_object: torch.Tensor) -> None:
+    save_tensor(merged_object, OUTPUT_DIR / f"checkpoint_epoch_{epoch:04d}.npy")
+
+
 # Run reconstruction.
 result = solve_study(
     study,
@@ -57,6 +64,8 @@ result = solve_study(
     epochs=EPOCHS,
     torch_device=TORCH_DEVICE,
     tile_batch_size=TILE_BATCH_SIZE,
+    on_checkpoint=save_checkpoint,
+    checkpoint_interval=50,
 )
 
 # Save reconstruction artifacts.
