@@ -14,7 +14,7 @@ study = PtychStudy.load(dataset)
 # Reconstruction geometry settings
 TILE_SIZE = 64
 CROP_SIZE = 256
-CAPTURE_SELECTION = [(0, 27), (61,)]
+CAPTURE_SELECTION = [(0, 61)]  # all captures
 
 OBJECT_TO_CAPTURE_RATIO = 4
 NUMERICAL_APERTURE = 0.13  # Used to generate the initial pupil guess; still a free parameter.
@@ -23,8 +23,8 @@ NUM_AMP_TERMS = 10
 
 # Optimization and runtime settings
 TORCH_DEVICE = "mps"  # Switch to "cpu" or "cuda".
-TILE_BATCH_SIZE = 16
-EPOCHS = 150
+TILE_BATCH_SIZE = 8
+EPOCHS = 500
 
 # Output directory
 OUTPUT_DIR = Path(f"results/{dataset}-2")
@@ -79,5 +79,10 @@ save_preview_png(
     result.stitched_object,
     OUTPUT_DIR / "stitched_object.png",
     mode="intensity",
+)
+save_preview_png(
+    result.stitched_object,
+    OUTPUT_DIR / "stitched_phase.png",
+    mode="phase",
 )
 print(f"Stitched result shape: {result.stitched_object.shape}")
