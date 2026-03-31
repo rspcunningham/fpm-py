@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import torch
@@ -16,6 +17,41 @@ from ptych.core.tiled import solve_tiled_from_inputs
 from ptych.data.bayer import demosaic
 from ptych.data.study import PtychStudy
 from ptych.data.types import Capture
+
+
+# A capture range is a tuple of (start,) or (start, stop) defining a half-open range.
+# A single-element tuple (start,) means "from start to the end".
+CaptureRange = tuple[int] | tuple[int, int]
+
+# A capture selector is either:
+#   - None                         → all captures
+#   - a list of CaptureRange       → e.g. [(0, 27), (61,)]
+CaptureSelector = None | list[CaptureRange]
+
+
+def _resolve_capture_indices(selector: CaptureSelector, total: int) -> list[int]:
+    """Convert a capture selector into a deduplicated list of integer indices."""
+    if selector is None:
+        return list(range(total))
+
+    indices: list[int] = []
+    for r in selector:
+        if len(r) == 1:
+            indices.extend(range(r[0], total))
+        elif len(r) == 2:
+            indices.extend(range(r[0], r[1]))
+        else:
+            raise ValueError(f"Expected 1- or 2-element tuple, got {r}")
+
+    seen: set[int] = set()
+    unique: list[int] = []
+    for idx in indices:
+        if not 0 <= idx < total:
+            raise IndexError(f"Capture index {idx} out of range for {total} captures")
+        if idx not in seen:
+            seen.add(idx)
+            unique.append(idx)
+    return unique
 
 
 _RGB_REFERENCE_WAVELENGTHS_M = (
@@ -96,39 +132,34 @@ def _crop_captures(
 def _prepare_study_inputs(
     study: PtychStudy,
     *,
-    n_captures: int = -1,
+    captures: CaptureSelector = None,
     capture_region: CaptureRegion,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     valid_captures = _valid_study_captures(study)
+    total = study.captures.shape[0]
 
-    if n_captures == -1:
-        selected_count = study.captures.shape[0]
-    elif n_captures <= 0:
-        raise ValueError("n_captures must be -1 (all captures) or a positive integer")
-    else:
-        selected_count = min(n_captures, study.captures.shape[0])
+    indices = _resolve_capture_indices(captures, total)
+    if not indices:
+        raise ValueError("Capture selection must select at least one capture")
 
-    selected_captures = study.captures[:selected_count]
-    selected_count = selected_captures.shape[0]
-
-    if selected_count == 0:
-        raise ValueError("n_captures must select at least one capture")
+    idx_tensor = torch.tensor(indices)
+    selected_captures = study.captures[idx_tensor]
 
     demosaiced_captures = demosaic(selected_captures)
     cropped_captures = _crop_captures(demosaiced_captures, capture_region)
 
-    selected_metadata = valid_captures[:selected_count]
+    selected_metadata = [valid_captures[i] for i in indices]
     channel_indices = torch.tensor(
-        [_channel_index_for_wavelength(capture.wavelength) for capture in selected_metadata],
+        [_channel_index_for_wavelength(cap.wavelength) for cap in selected_metadata],
         device=cropped_captures.device,
     )
-    capture_indices = torch.arange(selected_count, device=cropped_captures.device)
+    capture_indices = torch.arange(len(indices), device=cropped_captures.device)
     reconstruction_captures = cropped_captures[capture_indices, channel_indices]
 
     return (
         reconstruction_captures / reconstruction_captures.max(),
-        study.kx_batch[:selected_count],
-        study.ky_batch[:selected_count],
+        study.kx_batch[idx_tensor],
+        study.ky_batch[idx_tensor],
     )
 
 
@@ -136,7 +167,7 @@ def solve_study(
     study: PtychStudy,
     pupil: ZernikeParams,
     *,
-    n_captures: int = -1,
+    capture_selector: CaptureSelector = None,
     capture_region: CaptureRegion,
     tile_size: int,
     object_to_capture_ratio: int = 4,
@@ -152,7 +183,7 @@ def solve_study(
 ) -> StudySolveResult:
     captures, kx_batch, ky_batch = _prepare_study_inputs(
         study,
-        n_captures=n_captures,
+        captures=capture_selector,
         capture_region=capture_region,
     )
     stitched_object, tile_pupils, batch_metrics = solve_tiled_from_inputs(
