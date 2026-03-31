@@ -59,10 +59,10 @@ def solve_inverse(
     ky_batch = ky_batch / object_to_capture_ratio
 
     learned_tensors: list[dict[str, torch.Tensor | float]] = []
-    object_amp = torch.abs(object).clone().detach().requires_grad_(True)      # [T, N, N]
-    object_phase = torch.angle(object).clone().detach().requires_grad_(True)  # [T, N, N]
-    learned_tensors.append({'params': object_amp, 'lr': 1e-2})
-    learned_tensors.append({'params': object_phase, 'lr': 1e-2})
+    object_re = object.real.clone().detach().requires_grad_(True)      # [T, N, N]
+    object_im = object.imag.clone().detach().requires_grad_(True)      # [T, N, N]
+    learned_tensors.append({'params': object_re, 'lr': 1e-2})
+    learned_tensors.append({'params': object_im, 'lr': 1e-2})
 
     intensity_scale = torch.ones(B, device=torch_device).requires_grad_(True)  # [B]
     learned_tensors.append({'params': intensity_scale, 'lr': 1e-2})
@@ -111,8 +111,8 @@ def solve_inverse(
             for tile_idx in range(T)
         ])
 
-        # Reconstruct complex object from amplitude and phase
-        object_complex = object_amp * torch.exp(1j * object_phase)  # [T, N, N]
+        # Reconstruct complex object from real and imaginary parts
+        object_complex = object_re + 1j * object_im  # [T, N, N]
 
         # Batched forward pass
         predicted_intensities = forward_model(object_complex, pupil_tensor, kx_batch, ky_batch)  # [T, B, N, N]
@@ -143,7 +143,7 @@ def solve_inverse(
 
         # Checkpoint callback
         if on_checkpoint is not None and epoch % checkpoint_interval == 0:
-            object_checkpoint = (object_amp * torch.exp(1j * object_phase)).detach().clone()
+            object_checkpoint = (object_re + 1j * object_im).detach().clone()
             on_checkpoint(epoch, object_checkpoint)
 
     # Transfer loss history to CPU in one bulk operation
@@ -153,8 +153,8 @@ def solve_inverse(
         "capture_loss": capture_loss_accumulator.cpu().tolist(),
     }
 
-    # Reconstruct final complex object from optimized amplitude and phase
-    object_final = object_amp.detach() * torch.exp(1j * object_phase.detach())  # [T, N, N]
+    # Reconstruct final complex object from optimized real and imaginary parts
+    object_final = object_re.detach() + 1j * object_im.detach()  # [T, N, N]
 
     return (
         object_final,
