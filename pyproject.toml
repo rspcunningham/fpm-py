@@ -16,6 +16,7 @@ authors = [
 dependencies = [
     "matplotlib>=3.10.7",
     "numpy>=2.3.4",
+    "pyqt5>=5.15.11",
     "seaborn>=0.13.2",
     "torch>=2.9.0",
     "torchvision>=0.24.0",

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from jaxtyping import Complex
+from jaxtyping import Complex, Float
 
 from ptych.core.synthetic import synthesize_captures
 from ptych.data.parse import write_manifest
@@ -15,7 +15,7 @@ def generate_synthetic_study(
     output_dir: str | Path,
     object_tensor: Complex[torch.Tensor, "N N"],
     pupil_tensor: Complex[torch.Tensor, "N N"],
-) -> None:
+) -> Float[torch.Tensor, "B n n"]:
     """
     Generate a synthetic study dataset from an in-memory manifest.
 
@@ -55,3 +55,5 @@ def generate_synthetic_study(
         np.save(captures_dir / cap.filename, img)
 
     print(f"Generated {len(valid_captures)} synthetic captures in {captures_dir}")
+
+    return captures

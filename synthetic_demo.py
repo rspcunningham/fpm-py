@@ -9,7 +9,9 @@ from PIL import Image
 
 from ptych import PtychStudy
 from ptych.data.synthetic import generate_synthetic_study
-from ptych.core.pupil import make_ideal_pupil, make_zernike_pupil
+from ptych.core.pupil import make_ideal_pupil, make_zernike_pupil_masked
+
+from viewer.qtlib import show_grayscale_subplots
 
 IDEAL_IMAGE_PATH = Path("demo_images/ideal.png")
 OUTPUT_DIR = Path("results/synthetic_usaf_test")
@@ -61,15 +63,17 @@ pupil_params = make_ideal_pupil(
     magnification=synthetic_manifest.magnification,
     object_to_capture_ratio=object_to_capture_ratio,
 )
-pupil_tensor = make_zernike_pupil(
+pupil_tensor = make_zernike_pupil_masked(
     pupil_params.phase_coeffs, pupil_params.amp_coeffs,
     pupil_params.basis, pupil_params.rad_fraction, use_softplus=False,
 )
 
 # Run synthetic study generation
-generate_synthetic_study(
+captures = generate_synthetic_study(
     manifest=synthetic_manifest,
     output_dir=OUTPUT_DIR,
     object_tensor=object_tensor,
     pupil_tensor=pupil_tensor,
 )
+
+show_grayscale_subplots(captures)

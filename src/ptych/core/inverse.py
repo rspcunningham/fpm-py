@@ -5,7 +5,7 @@ from jaxtyping import Float, Complex
 
 from ptych.core.forward import forward_model
 from ptych.core.metrics import CheckpointCallback, InverseMetrics
-from ptych.core.pupil import ZernikeBasis, ZernikeParams, make_zernike_pupil
+from ptych.core.pupil import ZernikeBasis, ZernikeParams, make_zernike_pupil_unmasked
 
 
 def _repeat_initial_pupil(
@@ -102,7 +102,7 @@ def solve_inverse(
     # Training loop
     for epoch in tqdm(range(epochs), desc="Solving inverse model..."):
         pupil_tensor = torch.stack([
-            make_zernike_pupil(
+            make_zernike_pupil_unmasked(
                 phase_coeffs[tile_idx],
                 amp_coeffs[tile_idx],
                 basis,
