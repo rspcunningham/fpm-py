@@ -64,8 +64,8 @@ def solve_inverse(
     learned_tensors.append({'params': object_amp, 'lr': 1e-2})
     learned_tensors.append({'params': object_phase, 'lr': 1e-1})
 
-    intensity_scale = torch.ones(B, device=torch_device).requires_grad_(True)  # [B]
-    learned_tensors.append({'params': intensity_scale, 'lr': 1e-2})
+    #intensity_scale = torch.ones(B, device=torch_device).requires_grad_(True)  # [B]
+    #learned_tensors.append({'params': intensity_scale, 'lr': 1e-2})
 
     # Repeat the initial pupil parameters so each tile has an independent pupil.
     phase_coeffs, amp_coeffs, rad_fraction, basis = _repeat_initial_pupil(
@@ -124,8 +124,9 @@ def solve_inverse(
         ).reshape(T, B, n, n)  # [T, B, n, n]
 
         # Compute loss across all captures
-        scaled_pred = intensity_scale[None, :, None, None] * downsampled  # [T, B, n, n]
-        residual = torch.sqrt(scaled_pred + 1e-8) - torch.sqrt(captures + 1e-8)
+        # scaled_pred = intensity_scale[None, :, None, None] * downsampled  # [T, B, n, n]
+        # residual = torch.sqrt(scaled_pred + 1e-8) - torch.sqrt(captures + 1e-8)
+        residual = torch.sqrt(downsampled + 1e-8) - torch.sqrt(captures + 1e-8)
         squared_residual = residual.square()
         total_loss = squared_residual.mean()
         tile_loss = squared_residual.mean(dim=(1, 2, 3))

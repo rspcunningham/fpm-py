@@ -6,9 +6,7 @@ from ptych import CaptureRegion, PtychStudy, solve_study
 from ptych.core.pupil import make_ideal_pupil
 from preview_utils import save_preview_png, save_tensor, save_metrics_summary
 
-from viewer.qtlib import show_grayscale_subplots
-
-dataset = "malaria-test"
+dataset = "usaf-test"
 
 # Load dataset from nextcloud storage
 study = PtychStudy.load(dataset)
@@ -16,7 +14,6 @@ study = PtychStudy.load(dataset)
 # Reconstruction geometry settings
 TILE_SIZE = 256
 CROP_SIZE = 256
-#CAPTURE_SELECTION = [(0, 37)]  # all captures
 CAPTURE_SELECTION = None
 
 OBJECT_TO_CAPTURE_RATIO = 4
@@ -27,7 +24,7 @@ NUM_AMP_TERMS = 10
 # Optimization and runtime settings
 TORCH_DEVICE = "mps"  # Switch to "cpu" or "cuda".
 TILE_BATCH_SIZE = 16
-EPOCHS = 150
+EPOCHS = 2000
 
 # Output directory
 OUTPUT_DIR = Path(f"results/{dataset}-2")
@@ -51,11 +48,9 @@ capture_region = CaptureRegion.centered_square(
     size=CROP_SIZE,
 )
 
-
 def save_checkpoint(epoch: int, merged_object: torch.Tensor) -> None:
     save_tensor(merged_object, OUTPUT_DIR / f"checkpoint_epoch_{epoch:04d}.npy")
 
-show_grayscale_subplots(study.captures)
 
 # Run reconstruction.
 result = solve_study(
