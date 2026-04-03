@@ -12,7 +12,11 @@ from ptych.core.metrics import (
     MergedCheckpointCallback,
     TileCompleteCallback,
 )
-from ptych.core.pupil import ZernikeParams, make_zernike_pupil, precompute_zernike_basis
+from ptych.core.pupil import (
+    ZernikeParams,
+    make_zernike_pupil_unmasked,
+    precompute_zernike_basis,
+)
 
 
 @dataclass(frozen=True)
@@ -225,7 +229,7 @@ def solve_tiled_from_inputs(
         for i, tile in enumerate(batch):
             obj_cpu = result_objects[i].cpu()
             solved_pupil = solved_pupils[i]
-            solved_pupil_tensor = make_zernike_pupil(
+            solved_pupil_tensor = make_zernike_pupil_unmasked(
                 solved_pupil.phase_coeffs,
                 solved_pupil.amp_coeffs,
                 solved_pupil.basis,

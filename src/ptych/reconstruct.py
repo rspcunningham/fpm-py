@@ -14,7 +14,6 @@ from ptych.core.metrics import (
 )
 from ptych.core.pupil import ZernikeParams
 from ptych.core.tiled import solve_tiled_from_inputs
-from ptych.data.bayer import demosaic
 from ptych.data.study import PtychStudy
 from ptych.data.types import Capture
 
@@ -52,13 +51,6 @@ def _resolve_capture_indices(selector: CaptureSelector, total: int) -> list[int]
             seen.add(idx)
             unique.append(idx)
     return unique
-
-
-_RGB_REFERENCE_WAVELENGTHS_M = (
-    625e-9,  # red
-    525e-9,  # green
-    470e-9,  # blue
-)
 
 
 @dataclass
@@ -101,13 +93,6 @@ def _valid_study_captures(study: PtychStudy) -> list[Capture]:
     return valid_captures
 
 
-def _channel_index_for_wavelength(wavelength_m: float) -> int:
-    return min(
-        range(len(_RGB_REFERENCE_WAVELENGTHS_M)),
-        key=lambda idx: abs(wavelength_m - _RGB_REFERENCE_WAVELENGTHS_M[idx]),
-    )
-
-
 def _crop_captures(
     captures: torch.Tensor,
     region: CaptureRegion,
@@ -144,20 +129,10 @@ def _prepare_study_inputs(
 
     idx_tensor = torch.tensor(indices)
     selected_captures = study.captures[idx_tensor]
-
-    demosaiced_captures = demosaic(selected_captures)
-    cropped_captures = _crop_captures(demosaiced_captures, capture_region)
-
-    selected_metadata = [valid_captures[i] for i in indices]
-    channel_indices = torch.tensor(
-        [_channel_index_for_wavelength(cap.wavelength) for cap in selected_metadata],
-        device=cropped_captures.device,
-    )
-    capture_indices = torch.arange(len(indices), device=cropped_captures.device)
-    reconstruction_captures = cropped_captures[capture_indices, channel_indices]
+    reconstruction_captures = _crop_captures(selected_captures, capture_region)
 
     return (
-        reconstruction_captures / reconstruction_captures.max(),
+        reconstruction_captures,
         study.kx_batch[idx_tensor],
         study.ky_batch[idx_tensor],
     )

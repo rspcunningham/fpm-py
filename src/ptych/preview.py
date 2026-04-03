@@ -13,16 +13,9 @@ import numpy.typing as npt
 import torch
 from jaxtyping import Float
 
-from ptych.data.bayer import demosaic
 from ptych.data.study import PtychStudy
 from ptych.data.types import Capture
 from ptych.reconstruct import CaptureRegion
-
-_RGB_REFERENCE_WAVELENGTHS_M = (
-    625e-9,  # red
-    525e-9,  # green
-    470e-9,  # blue
-)
 
 type ObjectPreviewMode = Literal["intensity", "amplitude", "phase"]
 
@@ -45,8 +38,8 @@ def prepare_study_capture_rgb(
             f"capture_index {capture_index} out of range for {study.captures.shape[0]} captures"
         )
 
-    capture = study.captures[capture_index:capture_index + 1]
-    rgb = demosaic(capture).squeeze(0)
+    capture = study.captures[capture_index]
+    rgb = capture.unsqueeze(0).repeat(3, 1, 1)
 
     if capture_region is not None:
         rgb = _crop_capture_channels(rgb, capture_region)
@@ -82,28 +75,15 @@ def _valid_study_captures(study: PtychStudy) -> list[Capture]:
         )
     return valid_captures
 
-
-def _channel_index_for_wavelength(wavelength_m: float) -> int:
-    return min(
-        range(len(_RGB_REFERENCE_WAVELENGTHS_M)),
-        key=lambda idx: abs(wavelength_m - _RGB_REFERENCE_WAVELENGTHS_M[idx]),
-    )
-
-
 def _prepare_study_capture_channel(
     study: PtychStudy,
     capture_index: int,
     capture_region: CaptureRegion | None = None,
 ) -> Float[torch.Tensor, "H W"]:
-    rgb = prepare_study_capture_rgb(
-        study,
-        capture_index,
-        capture_region=capture_region,
-    )
-    valid_captures = _valid_study_captures(study)
-    capture_meta = valid_captures[capture_index]
-    channel_index = _channel_index_for_wavelength(capture_meta.wavelength)
-    return rgb[channel_index]
+    capture = study.captures[capture_index]
+    if capture_region is not None:
+        return _crop_capture_channels(capture, capture_region)
+    return capture
 
 
 def _prepare_study_capture_scalar(

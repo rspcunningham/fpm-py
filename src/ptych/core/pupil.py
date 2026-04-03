@@ -226,26 +226,24 @@ def precompute_zernike_basis(
     )
 
 
-def make_zernike_pupil(
+def _evaluate_zernike_pupil(
     phase_coeffs: Float[Tensor, "num_phase"],
     amp_coeffs: Float[Tensor, "num_amp"],
     basis: ZernikeBasis,
     rad_fraction: Tensor | float,
-    use_softplus: bool = True,
-) -> Complex[Tensor, "N N"]:
-    """Generate complex pupil from Zernike coefficients with differentiable radius.
+    use_softplus: bool,
+) -> tuple[Complex[Tensor, "N N"], Float[Tensor, "N N"]]:
+    """Evaluate the unconstrained Zernike pupil and normalized radius grid.
 
     Args:
         phase_coeffs: Phase Zernike coefficients [num_phase_terms]
         amp_coeffs: Amplitude Zernike coefficients [num_amp_terms]
         basis: Precomputed ZernikeBasis from precompute_zernike_basis()
         rad_fraction: Pupil radius as fraction of tensor width (can be learnable tensor)
-        use_softplus: If True, apply softplus to ensure non-negative amplitude
-            (useful for optimization). If False, use raw linear combination
-            (useful for ground-truth generation with exact amplitude control).
+        use_softplus: If True, apply softplus to ensure non-negative amplitude.
 
     Returns:
-        Complex pupil tensor [N, N] with DC at (0, 0) in FFT-native coords
+        Tuple of the complex pupil tensor [N, N] and normalized radial coordinate grid.
     """
     # Convert rad_fraction to tensor if needed
     if not isinstance(rad_fraction, Tensor):
@@ -272,7 +270,44 @@ def make_zernike_pupil(
 
     pupil = amplitude * torch.exp(1j * phase)
 
+    return pupil, rho_norm
+
+
+def make_zernike_pupil_unmasked(
+    phase_coeffs: Float[Tensor, "num_phase"],
+    amp_coeffs: Float[Tensor, "num_amp"],
+    basis: ZernikeBasis,
+    rad_fraction: Tensor | float,
+    use_softplus: bool = True,
+) -> Complex[Tensor, "N N"]:
+    """Generate a smooth Zernike pupil without applying a hard aperture mask."""
+    pupil, _ = _evaluate_zernike_pupil(
+        phase_coeffs,
+        amp_coeffs,
+        basis,
+        rad_fraction,
+        use_softplus=use_softplus,
+    )
     return pupil
+
+
+def make_zernike_pupil_masked(
+    phase_coeffs: Float[Tensor, "num_phase"],
+    amp_coeffs: Float[Tensor, "num_amp"],
+    basis: ZernikeBasis,
+    rad_fraction: Tensor | float,
+    use_softplus: bool = True,
+) -> Complex[Tensor, "N N"]:
+    """Generate a physical Zernike pupil with a hard circular aperture mask."""
+    pupil, rho_norm = _evaluate_zernike_pupil(
+        phase_coeffs,
+        amp_coeffs,
+        basis,
+        rad_fraction,
+        use_softplus=use_softplus,
+    )
+    aperture_mask = (rho_norm <= 1.0).to(pupil.real.dtype)
+    return pupil * aperture_mask
 
 
 def init_phase_coeffs(

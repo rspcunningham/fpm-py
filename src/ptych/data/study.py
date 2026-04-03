@@ -7,14 +7,37 @@ import numpy.typing as npt
 import torch
 from jaxtyping import Float
 
+from ptych.data.bayer import demosaic
 from ptych.data.types import StudyManifest
 from ptych.data.parse import parse_manifest
 from ptych.data.utils import prepare_captures
 
 
+_RGB_REFERENCE_WAVELENGTHS_M = (
+    625e-9,  # red
+    525e-9,  # green
+    470e-9,  # blue
+)
+
+
+def _channel_index_for_wavelength(wavelength_m: float) -> int:
+    return min(
+        range(len(_RGB_REFERENCE_WAVELENGTHS_M)),
+        key=lambda idx: abs(wavelength_m - _RGB_REFERENCE_WAVELENGTHS_M[idx]),
+    )
+
+
+def _capture_exposure_ms(capture_index: int, exposure_ms: float | None) -> float:
+    if exposure_ms is None:
+        raise ValueError(f"Capture {capture_index} is missing exposure metadata")
+    if exposure_ms <= 0:
+        raise ValueError(f"Capture {capture_index} has non-positive exposure {exposure_ms}")
+    return exposure_ms
+
+
 class PtychStudy:
     manifest: StudyManifest
-    captures: Float[torch.Tensor, "B n n"] # [B, n, n] float intensities
+    captures: Float[torch.Tensor, "B n n"] # [B, n, n] demosaiced, exposure-corrected single-channel float intensities normalized to max 1
     kx_batch: Float[torch.Tensor, "B"] # [B] normalized to camera grid (cycles per sample pixel)
     ky_batch: Float[torch.Tensor, "B"] # [B] normalized to camera grid (cycles per sample pixel)
 
@@ -58,8 +81,28 @@ class PtychStudy:
             )
             images.append(img)
 
-        # Stack into tensor [B, n, n]
-        captures_tensor = torch.from_numpy(np.stack(images, axis=0)).float()
+        raw_captures = torch.from_numpy(np.stack(images, axis=0)).float()
+        demosaiced_captures = demosaic(raw_captures)
+        channel_indices = torch.tensor(
+            [_channel_index_for_wavelength(cap.wavelength) for cap in valid_captures],
+            device=demosaiced_captures.device,
+        )
+        capture_indices = torch.arange(len(valid_captures), device=demosaiced_captures.device)
+        captures_tensor = demosaiced_captures[capture_indices, channel_indices]
+        exposure_ms = torch.tensor(
+            [
+                _capture_exposure_ms(i, cap.exposure)
+                for i, cap in enumerate(valid_captures)
+            ],
+            dtype=captures_tensor.dtype,
+            device=captures_tensor.device,
+        )
+        captures_tensor = captures_tensor / exposure_ms[:, None, None]
+
+        max_value = torch.max(captures_tensor)
+        if max_value <= 0:
+            raise ValueError("Prepared captures must contain at least one positive intensity value")
+        captures_tensor = captures_tensor / max_value
 
         return cls(
             manifest=manifest,
