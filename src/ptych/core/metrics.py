@@ -24,7 +24,5 @@ class BatchMetricsRecord(TypedDict):
     metrics: InverseMetrics
 
 
-type CheckpointCallback = Callable[[int, Complex[torch.Tensor, "T N N"]], None]
-type MergedCheckpointCallback = Callable[[int, Complex[torch.Tensor, "N N"]], None]
 type TileCompleteCallback = Callable[[int, int, torch.Tensor, ZernikeParams, InverseMetrics], None]
 type BatchCompleteCallback = Callable[[list[TileCoord], list[ZernikeParams], InverseMetrics], None]

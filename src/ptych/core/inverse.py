@@ -4,7 +4,7 @@ from tqdm import tqdm
 from jaxtyping import Float, Complex
 
 from ptych.core.forward import forward_model
-from ptych.core.metrics import CheckpointCallback, InverseMetrics
+from ptych.core.metrics import InverseMetrics
 from ptych.core.pupil import ZernikeBasis, ZernikeParams, make_zernike_pupil_unmasked
 
 
@@ -36,9 +36,8 @@ def solve_inverse(
     learn_pupil: bool = True,
     learn_k_vectors: bool = False,
     torch_device: str | torch.device = "cpu",
-    on_checkpoint: CheckpointCallback | None = None,
     checkpoint_interval: int = 50,
-) -> tuple[Complex[torch.Tensor, "T N N"], list[ZernikeParams], InverseMetrics]:
+) -> tuple[list[ZernikeParams], InverseMetrics, list[Complex[torch.Tensor, "T N N"]], list[int]]:
 
     # Move all tensors to the specified device
     captures = captures.to(torch_device)
@@ -99,6 +98,10 @@ def solve_inverse(
     tile_loss_accumulator = torch.zeros(epochs, T, device=torch_device)
     capture_loss_accumulator = torch.zeros(epochs, B, device=torch_device)
 
+    # Reconstruction history accumulation
+    history_frames: list[Complex[torch.Tensor, "T N N"]] = []
+    history_epochs: list[int] = []
+
     # Training loop
     for epoch in tqdm(range(epochs), desc="Solving inverse model..."):
         pupil_tensor = torch.stack([
@@ -142,10 +145,10 @@ def solve_inverse(
         tile_loss_accumulator[epoch] = tile_loss.detach()
         capture_loss_accumulator[epoch] = capture_loss.detach()
 
-        # Checkpoint callback
-        if on_checkpoint is not None and epoch % checkpoint_interval == 0:
-            object_checkpoint = (object_amp * torch.exp(1j * object_phase)).detach().clone()
-            on_checkpoint(epoch, object_checkpoint)
+        # Record reconstruction frame
+        if checkpoint_interval > 0 and epoch % checkpoint_interval == 0:
+            history_frames.append((object_amp * torch.exp(1j * object_phase)).detach().cpu().clone())
+            history_epochs.append(epoch)
 
     # Transfer loss history to CPU in one bulk operation
     metrics: InverseMetrics = {
@@ -154,11 +157,13 @@ def solve_inverse(
         "capture_loss": capture_loss_accumulator.cpu().tolist(),
     }
 
-    # Reconstruct final complex object from optimized amplitude and phase
-    object_final = object_amp.detach() * torch.exp(1j * object_phase.detach())  # [T, N, N]
+    # Always include the final epoch
+    last_epoch = epochs - 1
+    if not history_epochs or history_epochs[-1] != last_epoch:
+        history_frames.append((object_amp * torch.exp(1j * object_phase)).detach().cpu().clone())
+        history_epochs.append(last_epoch)
 
     return (
-        object_final,
         [
             ZernikeParams(
                 phase_coeffs[tile_idx].detach(),
@@ -169,4 +174,6 @@ def solve_inverse(
             for tile_idx in range(T)
         ],
         metrics,
+        history_frames,
+        history_epochs,
     )

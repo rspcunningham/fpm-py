@@ -9,7 +9,6 @@ from jaxtyping import Complex
 from ptych.core.metrics import (
     BatchCompleteCallback,
     BatchMetricsRecord,
-    MergedCheckpointCallback,
     TileCompleteCallback,
 )
 from ptych.core.pupil import ZernikeParams
@@ -55,7 +54,8 @@ def _resolve_capture_indices(selector: CaptureSelector, total: int) -> list[int]
 
 @dataclass
 class StudySolveResult:
-    stitched_object: Complex[torch.Tensor, "N N"]
+    reconstruction_history: Complex[torch.Tensor, "C N N"]
+    checkpoint_epochs: list[int]
     tile_pupils: dict[tuple[int, int], Complex[torch.Tensor, "N N"]]
     batch_metrics: list[BatchMetricsRecord]
 
@@ -150,7 +150,6 @@ def solve_study(
     torch_device: str | torch.device = "cpu",
     learn_pupil: bool = True,
     learn_k_vectors: bool = False,
-    on_checkpoint: MergedCheckpointCallback | None = None,
     checkpoint_interval: int = 50,
     on_tile_complete: TileCompleteCallback | None = None,
     on_batch_complete: BatchCompleteCallback | None = None,
@@ -161,7 +160,7 @@ def solve_study(
         captures=capture_selector,
         capture_region=capture_region,
     )
-    stitched_object, tile_pupils, batch_metrics = solve_tiled_from_inputs(
+    reconstruction_history, checkpoint_epochs, tile_pupils, batch_metrics = solve_tiled_from_inputs(
         captures,
         kx_batch,
         ky_batch,
@@ -172,14 +171,14 @@ def solve_study(
         torch_device=torch_device,
         learn_pupil=learn_pupil,
         learn_k_vectors=learn_k_vectors,
-        on_checkpoint=on_checkpoint,
         checkpoint_interval=checkpoint_interval,
         on_tile_complete=on_tile_complete,
         on_batch_complete=on_batch_complete,
         tile_batch_size=tile_batch_size,
     )
     return StudySolveResult(
-        stitched_object=stitched_object,
+        reconstruction_history=reconstruction_history,
+        checkpoint_epochs=checkpoint_epochs,
         tile_pupils=tile_pupils,
         batch_metrics=batch_metrics,
     )

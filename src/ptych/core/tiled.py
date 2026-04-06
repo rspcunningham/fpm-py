@@ -8,8 +8,6 @@ from ptych.core.inverse import solve_inverse
 from ptych.core.metrics import (
     BatchCompleteCallback,
     BatchMetricsRecord,
-    CheckpointCallback,
-    MergedCheckpointCallback,
     TileCompleteCallback,
 )
 from ptych.core.pupil import (
@@ -75,13 +73,13 @@ def solve_tiled_from_inputs(
     torch_device: str | torch.device = "cpu",
     learn_pupil: bool = True,
     learn_k_vectors: bool = False,
-    on_checkpoint: MergedCheckpointCallback | None = None,
     checkpoint_interval: int = 50,
     on_tile_complete: TileCompleteCallback | None = None,
     on_batch_complete: BatchCompleteCallback | None = None,
     tile_batch_size: int = 1,
 ) -> tuple[
-    Complex[torch.Tensor, "N N"],
+    Complex[torch.Tensor, "C N N"],
+    list[int],
     dict[tuple[int, int], Complex[torch.Tensor, "N N"]],
     list[BatchMetricsRecord],
 ]:
@@ -101,11 +99,11 @@ def solve_tiled_from_inputs(
         tile_batch_size: Number of tiles to solve simultaneously.
         learn_pupil: Whether to optimize pupil coefficients.
         learn_k_vectors: Whether to optimize illumination k-vectors.
-        on_checkpoint: Optional inverse-solver checkpoint callback.
-        checkpoint_interval: Epoch spacing for inverse-solver checkpoints.
+        checkpoint_interval: Epoch spacing for checkpoint accumulation.
 
     Returns:
-        Stitched object, one pupil tensor per tile, and per-batch metrics.
+        Reconstruction history [C, N, N] (final frame is the result), checkpoint epoch indices,
+        one pupil tensor per tile, and per-batch metrics.
     """
     kx = kx_batch
     ky = ky_batch
@@ -127,9 +125,10 @@ def solve_tiled_from_inputs(
     # 6. Allocate output
     out_H = H * object_to_capture_ratio
     out_W = W * object_to_capture_ratio
-    output = torch.zeros(out_H, out_W, dtype=torch.complex64)
     tile_pupils: dict[tuple[int, int], Complex[torch.Tensor, "N N"]] = {}
     batch_metrics: list[BatchMetricsRecord] = []
+    batch_histories: list[tuple[list[_TilePlan], list[Complex[torch.Tensor, "T N N"]]]] = []
+    history_epochs: list[int] = []
 
     # 7. Build flat list of tile coordinates and iterate in batches
     tiles = [_TilePlan(y=y_plan, x=x_plan) for y_plan in y_plans for x_plan in x_plans]
@@ -170,36 +169,8 @@ def solve_tiled_from_inputs(
             pupil.rad_fraction.clone().detach(),
         )
 
-        # Wrap user's merged checkpoint callback for this batch
-        inner_checkpoint: CheckpointCallback | None = None
-        if on_checkpoint is not None:
-            def _make_merged_checkpoint_cb(
-                batch: list[_TilePlan],
-                output: torch.Tensor,
-                object_to_capture_ratio: int,
-                user_cb: MergedCheckpointCallback,
-            ) -> CheckpointCallback:
-                def _cb(epoch: int, objects: torch.Tensor) -> None:
-                    merged = output.clone()
-                    for i, tile in enumerate(batch):
-                        obj_cpu = objects[i].detach().cpu()
-                        crop_top = tile.y.trim * object_to_capture_ratio
-                        crop_left = tile.x.trim * object_to_capture_ratio
-                        crop_height = tile.y.length * object_to_capture_ratio
-                        crop_width = tile.x.length * object_to_capture_ratio
-                        obj_owned = obj_cpu[
-                            crop_top : crop_top + crop_height,
-                            crop_left : crop_left + crop_width,
-                        ]
-                        out_row = tile.y.output_start * object_to_capture_ratio
-                        out_col = tile.x.output_start * object_to_capture_ratio
-                        merged[out_row : out_row + crop_height, out_col : out_col + crop_width] = obj_owned
-                    user_cb(epoch, merged)
-                return _cb
-            inner_checkpoint = _make_merged_checkpoint_cb(batch, output, object_to_capture_ratio, on_checkpoint)
-
         # d. Solve batch
-        result_objects, solved_pupils, metrics = solve_inverse(
+        solved_pupils, metrics, batch_history, batch_epochs = solve_inverse(
             batch_captures,
             batch_objects_tensor,
             tile_pupil,
@@ -209,9 +180,12 @@ def solve_tiled_from_inputs(
             learn_pupil=learn_pupil,
             learn_k_vectors=learn_k_vectors,
             torch_device=torch_device,
-            on_checkpoint=inner_checkpoint,
             checkpoint_interval=checkpoint_interval,
         )
+
+        batch_histories.append((batch, batch_history))
+        history_epochs = batch_epochs
+        result_objects = batch_history[-1]  # final epoch
 
         batch_metrics.append({
             "tiles": [(tile.y.start, tile.x.start) for tile in batch],
@@ -225,9 +199,8 @@ def solve_tiled_from_inputs(
                 metrics,
             )
 
-        # e. Unpack into output grid
+        # e. Record tile pupils and callbacks
         for i, tile in enumerate(batch):
-            obj_cpu = result_objects[i].cpu()
             solved_pupil = solved_pupils[i]
             solved_pupil_tensor = make_zernike_pupil_unmasked(
                 solved_pupil.phase_coeffs,
@@ -235,25 +208,30 @@ def solve_tiled_from_inputs(
                 solved_pupil.basis,
                 solved_pupil.rad_fraction,
             ).cpu()
-            crop_top = tile.y.trim * object_to_capture_ratio
-            crop_left = tile.x.trim * object_to_capture_ratio
-            crop_height = tile.y.length * object_to_capture_ratio
-            crop_width = tile.x.length * object_to_capture_ratio
-            obj_owned = obj_cpu[
-                crop_top:crop_top + crop_height,
-                crop_left:crop_left + crop_width,
-            ]
-
-            out_row = tile.y.output_start * object_to_capture_ratio
-            out_col = tile.x.output_start * object_to_capture_ratio
-            output[out_row:out_row + crop_height, out_col:out_col + crop_width] = obj_owned
             tile_pupils[(tile.y.start, tile.x.start)] = solved_pupil_tensor
 
-            # f. Callback
             if on_tile_complete is not None:
-                on_tile_complete(tile.y.start, tile.x.start, obj_cpu, solved_pupil, metrics)
+                on_tile_complete(tile.y.start, tile.x.start, result_objects[i].cpu(), solved_pupil, metrics)
 
-    return output, tile_pupils, batch_metrics
+    # Merge reconstruction history across all batches
+    num_frames = len(batch_histories[0][1]) if batch_histories else 0
+    reconstruction_history = torch.zeros(num_frames, out_H, out_W, dtype=torch.complex64)
+    for tiles_in_batch, frames in batch_histories:
+        for frame_idx, frame_tensor in enumerate(frames):
+            for tile_idx, tile in enumerate(tiles_in_batch):
+                crop_top = tile.y.trim * object_to_capture_ratio
+                crop_left = tile.x.trim * object_to_capture_ratio
+                crop_height = tile.y.length * object_to_capture_ratio
+                crop_width = tile.x.length * object_to_capture_ratio
+                obj_owned = frame_tensor[tile_idx][
+                    crop_top:crop_top + crop_height,
+                    crop_left:crop_left + crop_width,
+                ]
+                out_row = tile.y.output_start * object_to_capture_ratio
+                out_col = tile.x.output_start * object_to_capture_ratio
+                reconstruction_history[frame_idx, out_row:out_row + crop_height, out_col:out_col + crop_width] = obj_owned
+
+    return reconstruction_history, history_epochs, tile_pupils, batch_metrics
 
 
 def solve_tiled(
@@ -267,14 +245,13 @@ def solve_tiled(
     torch_device: str | torch.device = "cpu",
     learn_pupil: bool = True,
     learn_k_vectors: bool = False,
-    on_checkpoint: MergedCheckpointCallback | None = None,
     checkpoint_interval: int = 50,
     on_tile_complete: TileCompleteCallback | None = None,
     on_batch_complete: BatchCompleteCallback | None = None,
     tile_batch_size: int = 1,
 ) -> Complex[torch.Tensor, "N N"]:
     """Compatibility wrapper for the prepared-input tiled solver."""
-    output, _, _ = solve_tiled_from_inputs(
+    history, _, _, _ = solve_tiled_from_inputs(
         captures,
         kx_batch,
         ky_batch,
@@ -285,10 +262,9 @@ def solve_tiled(
         torch_device=torch_device,
         learn_pupil=learn_pupil,
         learn_k_vectors=learn_k_vectors,
-        on_checkpoint=on_checkpoint,
         checkpoint_interval=checkpoint_interval,
         on_tile_complete=on_tile_complete,
         on_batch_complete=on_batch_complete,
         tile_batch_size=tile_batch_size,
     )
-    return output
+    return history[-1]

@@ -50,10 +50,6 @@ capture_region = CaptureRegion.centered_square(
     size=CROP_SIZE,
 )
 
-def save_checkpoint(epoch: int, merged_object: torch.Tensor) -> None:
-    save_tensor(merged_object, OUTPUT_DIR / f"checkpoint_epoch_{epoch:04d}.npy")
-
-
 # Run reconstruction.
 result = solve_study(
     study,
@@ -65,7 +61,6 @@ result = solve_study(
     epochs=EPOCHS,
     torch_device=TORCH_DEVICE,
     tile_batch_size=TILE_BATCH_SIZE,
-    on_checkpoint=save_checkpoint,
     checkpoint_interval=50,
 )
 
@@ -75,15 +70,18 @@ save_metrics_summary(
     path=OUTPUT_DIR / "reconstruction_metrics.png",
 )
 
-save_tensor(result.stitched_object, OUTPUT_DIR / "stitched_object.npy")
+stitched_object = result.reconstruction_history[-1]
+save_tensor(result.reconstruction_history, OUTPUT_DIR / "reconstruction_history.npy")
+save_tensor(stitched_object, OUTPUT_DIR / "stitched_object.npy")
 save_preview_png(
-    result.stitched_object,
+    stitched_object,
     OUTPUT_DIR / "stitched_object.png",
     mode="intensity",
 )
 save_preview_png(
-    result.stitched_object,
+    stitched_object,
     OUTPUT_DIR / "stitched_phase.png",
     mode="phase",
 )
-print(f"Stitched result shape: {result.stitched_object.shape}")
+print(f"Reconstruction history: {result.reconstruction_history.shape} at epochs {result.checkpoint_epochs}")
+print(f"Stitched result shape: {stitched_object.shape}")
