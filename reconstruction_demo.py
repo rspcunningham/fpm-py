@@ -6,7 +6,9 @@ from ptych import CaptureRegion, PtychStudy, solve_study
 from ptych.core.pupil import make_ideal_pupil
 from preview_utils import save_preview_png, save_tensor, save_metrics_summary
 
-dataset = "usaf-test"
+from viewer.qtlib import show_grayscale_subplots
+
+dataset = "usaf-test-dark"
 
 # Load dataset from nextcloud storage
 study = PtychStudy.load(dataset)
@@ -27,7 +29,7 @@ TILE_BATCH_SIZE = 16
 EPOCHS = 2000
 
 # Output directory
-OUTPUT_DIR = Path(f"results/{dataset}-2")
+OUTPUT_DIR = Path(f"results/{dataset}")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Prepare the initial pupil guess.

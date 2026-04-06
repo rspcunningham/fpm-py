@@ -63,6 +63,9 @@ class PtychStudy:
             manifest = parse_manifest(cast(dict[str, object], json.load(f)))
 
         valid_captures, _, kx_batch, ky_batch = prepare_captures(manifest)
+        dark_captures = [cap for cap in manifest.captures if not cap.led_positions]
+
+        expected_shape = (manifest.capture_dimensions.height, manifest.capture_dimensions.width)
 
         # Load capture images from captures/ subdirectory
         images: list[npt.NDArray[np.float64]] = []
@@ -70,11 +73,9 @@ class PtychStudy:
             img_path = dir_path / "captures" / cap.filename
             img = cast(npt.NDArray[np.float64], np.load(img_path))
 
-            # Validate image dimensions against manifest
             assert img.ndim == 2, (
                 f"Image must be 2D, got {img.ndim}D for {cap.filename}"
             )
-            expected_shape = (manifest.capture_dimensions.height, manifest.capture_dimensions.width)
             assert img.shape == expected_shape, (
                 f"Image dimensions don't match manifest. "
                 f"Expected {expected_shape} (height, width), got {img.shape} for {cap.filename}"
@@ -83,6 +84,24 @@ class PtychStudy:
 
         raw_captures = torch.from_numpy(np.stack(images, axis=0)).float()
         demosaiced_captures = demosaic(raw_captures)
+
+        # Dark-frame subtraction
+        if dark_captures:
+            dark_images: list[npt.NDArray[np.float64]] = []
+            for cap in dark_captures:
+                img_path = dir_path / "captures" / cap.filename
+                img = cast(npt.NDArray[np.float64], np.load(img_path))
+                assert img.ndim == 2, (
+                    f"Image must be 2D, got {img.ndim}D for {cap.filename}"
+                )
+                assert img.shape == expected_shape, (
+                    f"Image dimensions don't match manifest. "
+                    f"Expected {expected_shape} (height, width), got {img.shape} for {cap.filename}"
+                )
+                dark_images.append(img)
+            raw_darks = torch.from_numpy(np.stack(dark_images, axis=0)).float()
+            dark_avg = demosaic(raw_darks).mean(dim=0)  # [3, H, W]
+            demosaiced_captures = (demosaiced_captures - dark_avg.unsqueeze(0)).clamp(min=0)
         channel_indices = torch.tensor(
             [_channel_index_for_wavelength(cap.wavelength) for cap in valid_captures],
             device=demosaiced_captures.device,

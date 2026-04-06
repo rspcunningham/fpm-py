@@ -1,5 +1,4 @@
 import math
-import warnings
 
 import torch
 from jaxtyping import Float
@@ -55,15 +54,7 @@ def prepare_captures(
         (valid_captures, wavelength, kx_batch, ky_batch)
     """
     # Filter out darkfield captures
-    valid_captures: list[Capture] = []
-    for i, cap in enumerate(manifest.captures):
-        if not cap.led_positions:
-            warnings.warn(
-                f"Capture {i} ({cap.filename}) is a darkfield image and will be ignored.",
-                stacklevel=2,
-            )
-        else:
-            valid_captures.append(cap)
+    valid_captures: list[Capture] = [cap for cap in manifest.captures if cap.led_positions]
 
     # Assert single wavelength
     wavelengths = list({cap.wavelength for cap in valid_captures})

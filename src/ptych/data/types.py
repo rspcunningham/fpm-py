@@ -46,7 +46,7 @@ class Capture:
     """
 
     filename: str
-    wavelength: float
+    wavelength: float | None
     led_positions: list[LedPosition]
     captured_at: datetime | None = None
     exposure: float | None = None
