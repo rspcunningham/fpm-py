@@ -1,12 +1,8 @@
 from pathlib import Path
 
-import torch
-
+from preview_utils import save_metrics_summary, save_preview_png, save_tensor
 from ptych import CaptureRegion, PtychStudy, solve_study
 from ptych.core.pupil import make_ideal_pupil
-from preview_utils import save_preview_png, save_tensor, save_metrics_summary
-
-from viewer.qtlib import show_grayscale_subplots
 
 dataset = "usaf-test-dark"
 
@@ -19,7 +15,9 @@ CROP_SIZE = 256
 CAPTURE_SELECTION = None
 
 OBJECT_TO_CAPTURE_RATIO = 4
-NUMERICAL_APERTURE = 0.13  # Used to generate the initial pupil guess; still a free parameter.
+NUMERICAL_APERTURE = (
+    0.13  # Used to generate the initial pupil guess; still a free parameter.
+)
 NUM_PHASE_TERMS = 10
 NUM_AMP_TERMS = 10
 
@@ -83,5 +81,7 @@ save_preview_png(
     OUTPUT_DIR / "stitched_phase.png",
     mode="phase",
 )
-print(f"Reconstruction history: {result.reconstruction_history.shape} at epochs {result.checkpoint_epochs}")
+print(
+    f"Reconstruction history: {result.reconstruction_history.shape} at epochs {result.checkpoint_epochs}"
+)
 print(f"Stitched result shape: {stitched_object.shape}")

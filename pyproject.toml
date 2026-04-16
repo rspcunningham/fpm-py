@@ -14,29 +14,21 @@ authors = [
     {name = "Sammy Farnum", email = "sfarnumm1132@gmail.com"}
 ]
 dependencies = [
-    "matplotlib>=3.10.7",
     "numpy>=2.3.4",
-    "pyqt5>=5.15.11",
-    "seaborn>=0.13.2",
     "torch>=2.9.0",
     "torchvision>=0.24.0",
     "tqdm>=4.67.1",
+    "matplotlib>=3.10.7",
+    "seaborn>=0.13.2",
 ]
-
-[project.scripts]
-histogram-analysis = "ptych.tools.histogram_analysis:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ptych"]
 
-[tool.basedpyright]
-extraPaths = ["src"]
-reportMissingTypeStubs = false
-reportUnknownMemberType = false
-reportUnusedCallResult = false
 
 [dependency-groups]
 dev = [
-    "basedpyright>=1.33.0",
     "jaxtyping>=0.3.3",
+    "ruff>=0.15.11",
+    "ty>=0.0.31",
 ]
