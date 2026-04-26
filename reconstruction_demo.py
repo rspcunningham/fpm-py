@@ -10,8 +10,8 @@ dataset = "usaf-test-dark"
 study = PtychStudy.load(dataset)
 
 # Reconstruction geometry settings
-TILE_SIZE = 256
-CROP_SIZE = 256
+TILE_SIZE = 512
+CROP_SIZE = 512
 CAPTURE_SELECTION = None
 
 OBJECT_TO_CAPTURE_RATIO = 4
