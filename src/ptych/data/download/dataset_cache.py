@@ -23,7 +23,7 @@ DEFAULT_DOWNLOAD_MAX_ATTEMPTS = 3
 DEFAULT_DOWNLOAD_RETRY_DELAY_SECONDS = 5
 
 TRANSIENT_DOWNLOAD_ERRORS = (ConnectionResetError, ConnectionError, TimeoutError, OSError)
-DEFAULT_NEXTCLOUD_BASE_URL = "http://dqe.asuscomm.com:8080"
+DEFAULT_NEXTCLOUD_BASE_URL = "https://dqe.asuscomm.com"
 DEFAULT_NEXTCLOUD_SHARE_ID = "SLbNBTqK9firqZM"
 
 type JsonValue = None | bool | int | float | str | list[JsonValue] | dict[str, JsonValue]
