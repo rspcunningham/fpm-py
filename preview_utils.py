@@ -30,8 +30,13 @@ def save_metrics_summary(
 
     for batch_idx, record in enumerate(metrics):
         patches = record["patches"]
+        num_patches = len(patches)
+        if num_patches == 0:
+            raise ValueError(f"Metrics batch {batch_idx + 1} has no patches")
+
         batch_metrics = record["metrics"]
         loss: FloatArray = np.asarray(batch_metrics["loss"], dtype=np.float32)
+        mean_loss: FloatArray = np.asarray(loss / num_patches, dtype=np.float32)
         patch_loss: FloatArray = np.asarray(
             batch_metrics["patch_loss"],
             dtype=np.float32,
@@ -39,10 +44,13 @@ def save_metrics_summary(
         capture_loss: FloatArray = np.asarray(batch_metrics["capture_loss"], dtype=np.float32)
         epochs = np.arange(len(loss))
         batch_label = f"batch {batch_idx + 1}"
-        loss_log: FloatArray = np.asarray(np.log10(np.clip(loss, 1e-12, None)), dtype=np.float32)
+        loss_log: FloatArray = np.asarray(
+            np.log10(np.clip(mean_loss, 1e-12, None)),
+            dtype=np.float32,
+        )
 
-        total_label = "total" if batch_idx == 0 else f"total ({batch_label})"
-        ax_loss.plot(epochs, loss_log, label=total_label, color="black", linewidth=2.2)
+        mean_label = "mean" if batch_idx == 0 else f"mean ({batch_label})"
+        ax_loss.plot(epochs, loss_log, label=mean_label, color="black", linewidth=2.2)
 
         for patch_idx, (r, c) in enumerate(patches):
             patch_loss_log: FloatArray = np.asarray(
