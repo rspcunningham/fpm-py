@@ -3,20 +3,14 @@ from typing import cast
 
 import numpy as np
 import numpy.typing as npt
-import torch
+import seaborn as sns
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
-import seaborn as sns
 
 from ptych.core.metrics import BatchMetricsRecord
 
-
 type FloatArray = npt.NDArray[np.float32]
-
-
-def save_tensor(tensor: torch.Tensor, path: Path) -> None:
-    np.save(path, tensor.cpu().numpy())
 
 
 def save_metrics_summary(
@@ -25,7 +19,9 @@ def save_metrics_summary(
     path: Path,
 ) -> None:
     sns.set_theme(style="darkgrid")
-    fig, axes = cast(tuple[Figure, tuple[Axes, Axes]], plt.subplots(1, 2, figsize=(14, 5)))
+    fig, axes = cast(
+        tuple[Figure, tuple[Axes, Axes]], plt.subplots(1, 2, figsize=(14, 5))
+    )
     ax_loss, ax_capture = axes
 
     for batch_idx, record in enumerate(metrics):
@@ -41,7 +37,9 @@ def save_metrics_summary(
             batch_metrics["patch_loss"],
             dtype=np.float32,
         )
-        capture_loss: FloatArray = np.asarray(batch_metrics["capture_loss"], dtype=np.float32)
+        capture_loss: FloatArray = np.asarray(
+            batch_metrics["capture_loss"], dtype=np.float32
+        )
         epochs = np.arange(len(loss))
         batch_label = f"batch {batch_idx + 1}"
         loss_log: FloatArray = np.asarray(

@@ -1,7 +1,9 @@
 from pathlib import Path
 
-from preview_utils import save_metrics_summary, save_tensor
+import numpy as np
+
 from ptych import CaptureRegion, PtychStudy, solve_study
+from ptych.core.metric_plots import save_metrics_summary
 from ptych.core.pupil import radius_fraction_from_optics
 from ptych.data.types import is_illuminated_capture
 
@@ -70,11 +72,9 @@ save_metrics_summary(
 )
 
 reconstruction = result.reconstruction
-save_tensor(reconstruction, OUTPUT_DIR / "reconstruction.npy")
-save_tensor(result.raw_object_amplitude, OUTPUT_DIR / "raw_object_amplitude.npy")
-save_tensor(result.raw_object_phase, OUTPUT_DIR / "raw_object_phase.npy")
+np.save(OUTPUT_DIR / "reconstruction.npy", reconstruction.cpu().numpy())
+np.save(OUTPUT_DIR / "object.npy", result.object.cpu().numpy())
 
 print(f"Reconstruction tensor: {result.reconstruction.shape}")
-print(f"Raw object amplitude tensor: {result.raw_object_amplitude.shape}")
-print(f"Raw object phase tensor: {result.raw_object_phase.shape}")
+print(f"Object tensor: {result.object.shape}")
 print(f"Stitched result shape: {reconstruction.shape}")

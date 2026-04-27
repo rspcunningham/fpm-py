@@ -15,8 +15,7 @@ from ptych.data.study import PtychStudy
 @dataclass
 class StudySolveResult:
     reconstruction: Float[Tensor, "N N"]
-    raw_object_amplitude: Float[Tensor, "N N"]
-    raw_object_phase: Float[Tensor, "N N"]
+    object: Complex[Tensor, "N N"]
     pupils: dict[tuple[int, int], Complex[Tensor, "N N"]]
     metrics: list[BatchMetricsRecord]
 
@@ -70,8 +69,7 @@ class _PatchCrop:
 class _SolvedBatch:
     patches: list[_Patch]
     reconstruction: Float[Tensor, "P N N"]
-    raw_object_amplitude: Float[Tensor, "P N N"]
-    raw_object_phase: Float[Tensor, "P N N"]
+    object: Complex[Tensor, "P N N"]
 
 
 def _axis_patches(length: int, patch_size: int) -> list[_AxisPatch]:
@@ -119,15 +117,23 @@ def _patch_crop(patch: _Patch, object_to_capture_ratio: int) -> _PatchCrop:
 
 
 def _stitch_patch_field(
-    patch_tensors: list[tuple[list[_Patch], Float[Tensor, "P N N"]]],
+    patch_tensors: list[tuple[list[_Patch], Tensor]],
     *,
     height: int,
     width: int,
     object_to_capture_ratio: int,
-) -> Float[Tensor, "N N"]:
+) -> Tensor:
+    first_tensor = next(
+        (tensor for _, tensors in patch_tensors for tensor in tensors), None
+    )
+    if first_tensor is None:
+        raise ValueError("Cannot stitch an empty set of patch tensors")
+
     stitched = torch.zeros(
         height * object_to_capture_ratio,
         width * object_to_capture_ratio,
+        dtype=first_tensor.dtype,
+        device=first_tensor.device,
     )
 
     for patches, tensors in patch_tensors:
@@ -153,8 +159,6 @@ def _train_batch(
     device: str | torch.device,
 ) -> tuple[
     Complex[Tensor, "P N N"],
-    Float[Tensor, "P N N"],
-    Float[Tensor, "P N N"],
     Complex[Tensor, "P N N"],
     InverseMetrics,
 ]:
@@ -212,8 +216,6 @@ def _train_batch(
     with torch.no_grad():
         return (
             model.object().detach().cpu(),
-            model.object.amplitude.detach().cpu(),
-            model.object.phase.detach().cpu(),
             model.pupil().detach().cpu(),
             metrics,
         )
@@ -266,8 +268,6 @@ def solve_study(
 
         (
             objects,
-            raw_object_amplitudes,
-            raw_object_phases,
             batch_pupils,
             batch_metrics,
         ) = _train_batch(
@@ -285,8 +285,7 @@ def solve_study(
             _SolvedBatch(
                 patches=batch,
                 reconstruction=objects.abs().square(),
-                raw_object_amplitude=raw_object_amplitudes,
-                raw_object_phase=raw_object_phases,
+                object=objects,
             )
         )
         metrics.append(
@@ -308,19 +307,14 @@ def solve_study(
         [(batch.patches, batch.reconstruction) for batch in solved_batches],
         **stitch_kwargs,
     )
-    raw_object_amplitude = _stitch_patch_field(
-        [(batch.patches, batch.raw_object_amplitude) for batch in solved_batches],
-        **stitch_kwargs,
-    )
-    raw_object_phase = _stitch_patch_field(
-        [(batch.patches, batch.raw_object_phase) for batch in solved_batches],
+    object_tensor = _stitch_patch_field(
+        [(batch.patches, batch.object) for batch in solved_batches],
         **stitch_kwargs,
     )
 
     return StudySolveResult(
         reconstruction=reconstruction,
-        raw_object_amplitude=raw_object_amplitude,
-        raw_object_phase=raw_object_phase,
+        object=object_tensor,
         pupils=pupils,
         metrics=metrics,
     )
