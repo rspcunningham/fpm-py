@@ -1,5 +1,5 @@
 from ptych import PtychStudy, CaptureRegion
-from ptych.preview import show_study_capture, show_object_preview, render_study_capture_preview_png
+from ptych.preview import render_study_capture_preview_png
 
 study = PtychStudy.load("usaf-test")
 region = CaptureRegion.centered_square(

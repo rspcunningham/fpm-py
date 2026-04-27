@@ -464,6 +464,7 @@ name = "ptych"
 version = "0.0.1"
 source = { editable = "." }
 dependencies = [
+    { name = "jaxtyping" },
     { name = "matplotlib" },
     { name = "numpy" },
     { name = "seaborn" },
@@ -474,13 +475,13 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "jaxtyping" },
     { name = "ruff" },
     { name = "ty" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "jaxtyping", specifier = ">=0.3.3" },
     { name = "matplotlib", specifier = ">=3.10.7" },
     { name = "numpy", specifier = ">=2.3.4" },
     { name = "seaborn", specifier = ">=0.13.2" },
@@ -491,7 +492,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "jaxtyping", specifier = ">=0.3.3" },
     { name = "ruff", specifier = ">=0.15.11" },
     { name = "ty", specifier = ">=0.0.31" },
 ]

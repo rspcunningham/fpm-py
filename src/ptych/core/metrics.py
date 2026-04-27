@@ -4,7 +4,6 @@ from collections.abc import Callable
 from typing import TypedDict
 
 import torch
-from jaxtyping import Complex
 
 from ptych.core.pupil import Pupil
 

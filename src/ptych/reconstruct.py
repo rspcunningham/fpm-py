@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass
 
 import torch
@@ -34,12 +33,11 @@ def _resolve_capture_indices(selector: CaptureSelector, total: int) -> list[int]
 
     indices: list[int] = []
     for r in selector:
-        if len(r) == 1:
-            indices.extend(range(r[0], total))
-        elif len(r) == 2:
-            indices.extend(range(r[0], r[1]))
-        else:
-            raise ValueError(f"Expected 1- or 2-element tuple, got {r}")
+        match r:
+            case (start,):
+                indices.extend(range(start, total))
+            case (start, stop):
+                indices.extend(range(start, stop))
 
     seen: set[int] = set()
     unique: list[int] = []
@@ -122,7 +120,7 @@ def _prepare_study_inputs(
     captures: CaptureSelector = None,
     capture_region: CaptureRegion,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    valid_captures = _valid_study_captures(study)
+    _valid_study_captures(study)
     total = study.captures.shape[0]
 
     indices = _resolve_capture_indices(captures, total)

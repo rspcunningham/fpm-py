@@ -82,6 +82,7 @@ def manifest_to_dict(manifest: StudyManifest) -> dict[str, object]:
     for capture in manifest.captures:
         capture_data: dict[str, object] = {
             "filename": capture.filename,
+            "wavelength": capture.wavelength,
             "led_positions": [
                 {
                     "x": position.x,
@@ -91,8 +92,6 @@ def manifest_to_dict(manifest: StudyManifest) -> dict[str, object]:
                 for position in capture.led_positions
             ],
         }
-        if capture.wavelength is not None:
-            capture_data["wavelength"] = capture.wavelength
         if capture.captured_at is not None:
             capture_data["captured_at"] = capture.captured_at.isoformat()
         if capture.exposure is not None:
@@ -150,14 +149,9 @@ def parse_manifest(data: dict[str, object]) -> StudyManifest:
 
         captured_at_str = _optional_str(cap, "captured_at")
 
-        if led_positions:
-            wavelength = _require_num(cap, "wavelength", f"captures[{i}]")
-        else:
-            wavelength = _optional_num(cap, "wavelength")
-
         captures.append(Capture(
             filename=_require_str(cap, "filename", f"captures[{i}]"),
-            wavelength=wavelength,
+            wavelength=_require_num(cap, "wavelength", f"captures[{i}]"),
             led_positions=led_positions,
             captured_at=datetime.fromisoformat(captured_at_str) if captured_at_str else None,
             exposure=_optional_num(cap, "exposure"),

@@ -11,8 +11,6 @@ from ptych import PtychStudy
 from ptych.data.synthetic import generate_synthetic_study
 from ptych.core.pupil import make_ideal_pupil, make_pupil
 
-from viewer.qtlib import show_grayscale_subplots
-
 IDEAL_IMAGE_PATH = Path("demo_images/ideal.png")
 OUTPUT_DIR = Path("results/synthetic_usaf_test")
 
@@ -57,10 +55,11 @@ assert N % capture_size == 0, (
 object_to_capture_ratio = N // capture_size
 print(f"Using object-to-capture ratio: {object_to_capture_ratio}")
 
+pupil_capture = next(capture for capture in synthetic_manifest.captures if capture.led_positions)
 pupil_params = make_ideal_pupil(
     object_grid_size=N,
     numerical_aperture=0.13,
-    wavelength_m=synthetic_manifest.captures[0].wavelength,
+    wavelength_m=pupil_capture.wavelength,
     sensor_pixel_size_m=synthetic_manifest.sensor_pixel_size,
     magnification=synthetic_manifest.magnification,
     object_to_capture_ratio=object_to_capture_ratio,
@@ -81,4 +80,4 @@ captures = generate_synthetic_study(
     pupil_tensor=pupil_tensor,
 )
 
-show_grayscale_subplots(captures)
+print(f"Generated captures tensor shape: {tuple(captures.shape)}")

@@ -31,10 +31,11 @@ OUTPUT_DIR = Path(f"results/{dataset}")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Prepare the initial pupil guess.
+pupil_capture = next(capture for capture in study.manifest.captures if capture.led_positions)
 pupil = make_ideal_pupil(
     object_grid_size=TILE_SIZE * OBJECT_TO_CAPTURE_RATIO,
     numerical_aperture=NUMERICAL_APERTURE,
-    wavelength_m=study.manifest.captures[0].wavelength,
+    wavelength_m=pupil_capture.wavelength,
     sensor_pixel_size_m=study.manifest.sensor_pixel_size,
     magnification=study.manifest.magnification,
     object_to_capture_ratio=OBJECT_TO_CAPTURE_RATIO,

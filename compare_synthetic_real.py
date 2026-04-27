@@ -195,8 +195,14 @@ def main() -> None:
     if real_filenames != synthetic_filenames:
         raise ValueError("Real and synthetic capture filenames are not aligned.")
 
-    real_shape = tuple(int(v) for v in real_study.captures.shape[-2:])
-    synthetic_shape = tuple(int(v) for v in synthetic_study.captures.shape[-2:])
+    real_shape = (
+        int(real_study.captures.shape[-2]),
+        int(real_study.captures.shape[-1]),
+    )
+    synthetic_shape = (
+        int(synthetic_study.captures.shape[-2]),
+        int(synthetic_study.captures.shape[-1]),
+    )
     crop_rows, crop_cols = _center_crop_bounds(real_shape, synthetic_shape)
 
     rows: list[dict[str, Any]] = []
