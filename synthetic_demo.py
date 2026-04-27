@@ -9,7 +9,7 @@ from PIL import Image
 
 from ptych import PtychStudy
 from ptych.data.synthetic import generate_synthetic_study
-from ptych.core.pupil import make_ideal_pupil, make_zernike_pupil_masked
+from ptych.core.pupil import make_ideal_pupil, make_pupil
 
 from viewer.qtlib import show_grayscale_subplots
 
@@ -21,7 +21,9 @@ study = PtychStudy.load("usaf-test")
 
 # Load ideal.png and convert to grayscale float [0, 1]
 img = Image.open(IDEAL_IMAGE_PATH).convert("L")
-amplitude: npt.NDArray[np.float32] = np.asarray(img, dtype=np.float32) / np.float32(255.0)
+amplitude: npt.NDArray[np.float32] = np.asarray(img, dtype=np.float32) / np.float32(
+    255.0
+)
 
 # Center-crop to a square since the current synthetic pipeline requires NxN square tensors.
 image_shape = cast(tuple[int, int], amplitude.shape)
@@ -30,7 +32,7 @@ width = image_shape[1]
 crop_size = min(height, width)
 top = (height - crop_size) // 2
 left = (width - crop_size) // 2
-amplitude = amplitude[top:top + crop_size, left:left + crop_size]
+amplitude = amplitude[top : top + crop_size, left : left + crop_size]
 
 synthetic_manifest = replace(
     study.manifest,
@@ -63,9 +65,12 @@ pupil_params = make_ideal_pupil(
     magnification=synthetic_manifest.magnification,
     object_to_capture_ratio=object_to_capture_ratio,
 )
-pupil_tensor = make_zernike_pupil_masked(
-    pupil_params.phase_coeffs, pupil_params.amp_coeffs,
-    pupil_params.basis, pupil_params.rad_fraction, use_softplus=False,
+pupil_tensor = make_pupil(
+    pupil_params.phase_coeffs,
+    pupil_params.amp_coeffs,
+    pupil_params.basis,
+    pupil_params.radius_fraction,
+    use_softplus=False,
 )
 
 # Run synthetic study generation

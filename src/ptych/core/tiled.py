@@ -11,9 +11,9 @@ from ptych.core.metrics import (
     TileCompleteCallback,
 )
 from ptych.core.pupil import (
-    ZernikeParams,
-    make_zernike_pupil_unmasked,
-    precompute_zernike_basis,
+    Pupil,
+    make_basis,
+    make_pupil,
 )
 
 
@@ -49,7 +49,9 @@ def _axis_tile_plans(length: int, tile_size: int) -> list[_AxisTilePlan]:
             trim = max(0, starts[idx - 1] + tile_size - start)
 
         output_start = start + trim
-        length_owned = length - output_start if idx == len(starts) - 1 else tile_size - trim
+        length_owned = (
+            length - output_start if idx == len(starts) - 1 else tile_size - trim
+        )
         plans.append(
             _AxisTilePlan(
                 start=start,
@@ -66,7 +68,7 @@ def solve_tiled_from_inputs(
     captures: Float[torch.Tensor, "B H W"],
     kx_batch: Float[torch.Tensor, "B"],
     ky_batch: Float[torch.Tensor, "B"],
-    pupil: ZernikeParams,
+    pupil: Pupil,
     tile_size: int,
     object_to_capture_ratio: int = 4,
     epochs: int = 1000,
@@ -89,7 +91,7 @@ def solve_tiled_from_inputs(
         captures: Capture intensities [B, H, W].
         kx_batch: Normalized k-vectors in x [B].
         ky_batch: Normalized k-vectors in y [B].
-        pupil: Initial ZernikeParams (re-initialized per tile batch from these values).
+        pupil: Initial pupil parameters, re-initialized per tile batch.
         tile_size: Size of each square capture tile (pixels).
         object_to_capture_ratio: Linear ratio between object and capture grids.
         epochs: Optimization steps per tile batch.
@@ -114,9 +116,8 @@ def solve_tiled_from_inputs(
     y_plans = _axis_tile_plans(H, tile_size)
     x_plans = _axis_tile_plans(W, tile_size)
 
-    # 5. Precompute zernike basis at tile resolution (shared across all tiles)
     upsampled_size = tile_size * object_to_capture_ratio
-    basis = precompute_zernike_basis(
+    basis = make_basis(
         upsampled_size,
         num_phase_terms=pupil.basis.num_phase_terms,
         num_amp_terms=pupil.basis.num_amp_terms,
@@ -127,22 +128,24 @@ def solve_tiled_from_inputs(
     out_W = W * object_to_capture_ratio
     tile_pupils: dict[tuple[int, int], Complex[torch.Tensor, "N N"]] = {}
     batch_metrics: list[BatchMetricsRecord] = []
-    batch_histories: list[tuple[list[_TilePlan], list[Complex[torch.Tensor, "T N N"]]]] = []
+    batch_histories: list[
+        tuple[list[_TilePlan], list[Complex[torch.Tensor, "T N N"]]]
+    ] = []
     history_epochs: list[int] = []
 
     # 7. Build flat list of tile coordinates and iterate in batches
     tiles = [_TilePlan(y=y_plan, x=x_plan) for y_plan in y_plans for x_plan in x_plans]
 
     for batch_start in range(0, len(tiles), tile_batch_size):
-        batch = tiles[batch_start:batch_start + tile_batch_size]
+        batch = tiles[batch_start : batch_start + tile_batch_size]
         T = len(batch)
 
         # a. Stack tile captures: [T, B, n, n]
         tile_captures: list[Float[torch.Tensor, "B H W"]] = [
             captures[
                 :,
-                tile.y.start:tile.y.start + tile_size,
-                tile.x.start:tile.x.start + tile_size,
+                tile.y.start : tile.y.start + tile_size,
+                tile.x.start : tile.x.start + tile_size,
             ]
             for tile in batch
         ]
@@ -161,12 +164,11 @@ def solve_tiled_from_inputs(
             batch_objects.append(init_amp * torch.exp(1j * init_phase))
         batch_objects_tensor = torch.stack(batch_objects)  # [T, N, N]
 
-        # c. Fresh initial ZernikeParams copied per tile inside solve_inverse
-        tile_pupil = ZernikeParams(
+        tile_pupil = Pupil(
             pupil.phase_coeffs.clone().detach(),
             pupil.amp_coeffs.clone().detach(),
             basis,
-            pupil.rad_fraction.clone().detach(),
+            pupil.radius_fraction.clone().detach(),
         )
 
         # d. Solve batch
@@ -187,10 +189,12 @@ def solve_tiled_from_inputs(
         history_epochs = batch_epochs
         result_objects = batch_history[-1]  # final epoch
 
-        batch_metrics.append({
-            "tiles": [(tile.y.start, tile.x.start) for tile in batch],
-            "metrics": metrics,
-        })
+        batch_metrics.append(
+            {
+                "tiles": [(tile.y.start, tile.x.start) for tile in batch],
+                "metrics": metrics,
+            }
+        )
 
         if on_batch_complete is not None:
             on_batch_complete(
@@ -202,20 +206,28 @@ def solve_tiled_from_inputs(
         # e. Record tile pupils and callbacks
         for i, tile in enumerate(batch):
             solved_pupil = solved_pupils[i]
-            solved_pupil_tensor = make_zernike_pupil_unmasked(
+            solved_pupil_tensor = make_pupil(
                 solved_pupil.phase_coeffs,
                 solved_pupil.amp_coeffs,
                 solved_pupil.basis,
-                solved_pupil.rad_fraction,
+                solved_pupil.radius_fraction,
             ).cpu()
             tile_pupils[(tile.y.start, tile.x.start)] = solved_pupil_tensor
 
             if on_tile_complete is not None:
-                on_tile_complete(tile.y.start, tile.x.start, result_objects[i].cpu(), solved_pupil, metrics)
+                on_tile_complete(
+                    tile.y.start,
+                    tile.x.start,
+                    result_objects[i].cpu(),
+                    solved_pupil,
+                    metrics,
+                )
 
     # Merge reconstruction history across all batches
     num_frames = len(batch_histories[0][1]) if batch_histories else 0
-    reconstruction_history = torch.zeros(num_frames, out_H, out_W, dtype=torch.complex64)
+    reconstruction_history = torch.zeros(
+        num_frames, out_H, out_W, dtype=torch.complex64
+    )
     for tiles_in_batch, frames in batch_histories:
         for frame_idx, frame_tensor in enumerate(frames):
             for tile_idx, tile in enumerate(tiles_in_batch):
@@ -224,12 +236,16 @@ def solve_tiled_from_inputs(
                 crop_height = tile.y.length * object_to_capture_ratio
                 crop_width = tile.x.length * object_to_capture_ratio
                 obj_owned = frame_tensor[tile_idx][
-                    crop_top:crop_top + crop_height,
-                    crop_left:crop_left + crop_width,
+                    crop_top : crop_top + crop_height,
+                    crop_left : crop_left + crop_width,
                 ]
                 out_row = tile.y.output_start * object_to_capture_ratio
                 out_col = tile.x.output_start * object_to_capture_ratio
-                reconstruction_history[frame_idx, out_row:out_row + crop_height, out_col:out_col + crop_width] = obj_owned
+                reconstruction_history[
+                    frame_idx,
+                    out_row : out_row + crop_height,
+                    out_col : out_col + crop_width,
+                ] = obj_owned
 
     return reconstruction_history, history_epochs, tile_pupils, batch_metrics
 
@@ -238,7 +254,7 @@ def solve_tiled(
     captures: Float[torch.Tensor, "B H W"],
     kx_batch: Float[torch.Tensor, "B"],
     ky_batch: Float[torch.Tensor, "B"],
-    pupil: ZernikeParams,
+    pupil: Pupil,
     tile_size: int,
     object_to_capture_ratio: int = 4,
     epochs: int = 1000,

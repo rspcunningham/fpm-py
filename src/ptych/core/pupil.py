@@ -2,26 +2,18 @@ import math
 from typing import NamedTuple
 
 import torch
-from torch import Tensor
+import torch.nn.functional as F
 from jaxtyping import Complex, Float
+from torch import Tensor
 
 
-class ZernikeBasis:
-    """Container for precomputed Zernike basis components.
-
-    Precomputes radius-independent quantities:
-    - rho_pixels: radial distance in pixels (unnormalized)
-    - theta: angular coordinates
-    - angular_parts: cos(m*θ) or sin(|m|*θ) for each term
-    - poly_coeffs: zero-padded polynomial coefficients [T, max_k] (float)
-    - poly_powers: zero-padded powers [T, max_k] (float, for differentiable rho^p)
-    """
+class PupilBasis:
+    """Precomputed radius-independent basis terms."""
 
     rho_pixels: Float[Tensor, "N N"]
-    theta: Float[Tensor, "N N"]
     angular_parts: Float[Tensor, "max_terms N N"]
-    poly_coeffs: Float[Tensor, "max_terms max_k"]
-    poly_powers: Float[Tensor, "max_terms max_k"]
+    radial_coeffs: Float[Tensor, "max_terms max_k"]
+    radial_powers: Float[Tensor, "max_terms max_k"]
     size: int
     num_phase_terms: int
     num_amp_terms: int
@@ -29,62 +21,56 @@ class ZernikeBasis:
     def __init__(
         self,
         rho_pixels: Tensor,
-        theta: Tensor,
         angular_parts: Tensor,
-        poly_coeffs: Tensor,
-        poly_powers: Tensor,
+        radial_coeffs: Tensor,
+        radial_powers: Tensor,
         size: int,
         num_phase_terms: int,
         num_amp_terms: int,
     ) -> None:
         self.rho_pixels = rho_pixels
-        self.theta = theta
         self.angular_parts = angular_parts
-        self.poly_coeffs = poly_coeffs
-        self.poly_powers = poly_powers
+        self.radial_coeffs = radial_coeffs
+        self.radial_powers = radial_powers
         self.size = size
         self.num_phase_terms = num_phase_terms
         self.num_amp_terms = num_amp_terms
 
-    def to(self, device: torch.device | str) -> "ZernikeBasis":
-        """Move basis to specified device."""
-        return ZernikeBasis(
+    def to(self, device: torch.device | str) -> "PupilBasis":
+        return PupilBasis(
             rho_pixels=self.rho_pixels.to(device),
-            theta=self.theta.to(device),
             angular_parts=self.angular_parts.to(device),
-            poly_coeffs=self.poly_coeffs.to(device),
-            poly_powers=self.poly_powers.to(device),
+            radial_coeffs=self.radial_coeffs.to(device),
+            radial_powers=self.radial_powers.to(device),
             size=self.size,
             num_phase_terms=self.num_phase_terms,
             num_amp_terms=self.num_amp_terms,
         )
 
 
-class ZernikeParams(NamedTuple):
-    """Container for Zernike pupil parameterization.
-
-    Used with solve_inverse to learn pupil via Zernike coefficients
-    instead of raw pixel values.
-    """
-
-    phase_coeffs: Tensor  # [num_phase] - phase aberration coefficients
-    amp_coeffs: Tensor  # [num_amp] - amplitude coefficients
-    basis: ZernikeBasis  # precomputed basis (not learned)
-    rad_fraction: Tensor  # fraction of N for pupil radius, can be learnable
+class Pupil(NamedTuple):
+    phase_coeffs: Tensor
+    amp_coeffs: Tensor
+    basis: PupilBasis
+    radius_fraction: Tensor
 
 
-def noll_to_nm(j: int) -> tuple[int, int]:
-    """Convert Noll index (1-based) to (n, m) radial and azimuthal orders."""
+def _as_basis_tensor(value: Tensor | float, basis: PupilBasis) -> Tensor:
+    if isinstance(value, Tensor):
+        return value
+    return torch.tensor(
+        value, device=basis.rho_pixels.device, dtype=basis.rho_pixels.dtype
+    )
+
+
+def _noll_to_nm(j: int) -> tuple[int, int]:
     j_current = 1
     n = 0
     while True:
         for m in range(-n, n + 1, 2):
             if j_current == j:
                 if m != 0:
-                    if j % 2 == 0:
-                        m = abs(m)
-                    else:
-                        m = -abs(m)
+                    m = abs(m) if j % 2 == 0 else -abs(m)
                 return n, m
             j_current += 1
         n += 1
@@ -92,222 +78,158 @@ def noll_to_nm(j: int) -> tuple[int, int]:
             raise ValueError(f"Noll index j={j} too large")
 
 
-def radial_polynomial(n: int, m_abs: int, rho: Tensor) -> Tensor:
-    """Compute radial Zernike polynomial R_n^|m|(rho)."""
-    result = torch.zeros_like(rho)
-    for k in range((n - m_abs) // 2 + 1):
-        num = math.factorial(n - k)
-        den = (
-            math.factorial(k)
-            * math.factorial((n + m_abs) // 2 - k)
-            * math.factorial((n - m_abs) // 2 - k)
-        )
-        sign = 1 if k % 2 == 0 else -1
-        coeff = sign * num / den
-        result = result + coeff * (rho ** (n - 2 * k))
-    return result
-
-
-def zernike_polynomial(n: int, m: int, rho: Tensor, theta: Tensor) -> Tensor:
-    """Compute single Zernike polynomial Z_n^m(rho, theta)."""
-    radial = radial_polynomial(n, abs(m), rho)
-    if m > 0:
-        return radial * torch.cos(m * theta)
-    elif m < 0:
-        return radial * torch.sin(abs(m) * theta)
-    else:
-        return radial
-
-
-def make_polar_grid_fft(
-    size: int,
-    device: torch.device | str = "cpu",
-    dtype: torch.dtype = torch.float32,
-) -> tuple[Tensor, Tensor]:
-    """Create polar coordinates in FFT-native layout (center at index 0,0).
-
-    Returns:
-        rho: Radial distance in pixels [N, N]
-        theta: Angular coordinate [N, N]
-    """
-    coords = torch.arange(size, device=device, dtype=dtype)
-    coords = torch.where(coords >= size / 2, coords - size, coords)
-    grid_y, grid_x = torch.meshgrid(coords, coords, indexing="ij")
-    rho = torch.sqrt(grid_x**2 + grid_y**2)
-    theta = torch.atan2(grid_y, grid_x)
-    return rho, theta
-
-
-def compute_radial_coefficients(n: int, m_abs: int) -> tuple[list[float], list[int]]:
-    """Compute radial polynomial coefficients and powers for R_n^|m|(rho).
-
-    Returns:
-        coeffs: list of coefficients
-        powers: list of corresponding powers (n - 2*k for each k)
-    """
+def _radial_terms(n: int, m_abs: int) -> tuple[list[float], list[int]]:
     coeffs: list[float] = []
     powers: list[int] = []
     for k in range((n - m_abs) // 2 + 1):
-        num = math.factorial(n - k)
-        den = (
+        numerator = math.factorial(n - k)
+        denominator = (
             math.factorial(k)
             * math.factorial((n + m_abs) // 2 - k)
             * math.factorial((n - m_abs) // 2 - k)
         )
-        sign = 1 if k % 2 == 0 else -1
-        coeffs.append(sign * num / den)
+        coeffs.append((1 if k % 2 == 0 else -1) * numerator / denominator)
         powers.append(n - 2 * k)
     return coeffs, powers
 
 
-def precompute_zernike_basis(
+def _polar_grid(
+    size: int,
+    device: torch.device | str = "cpu",
+    dtype: torch.dtype = torch.float32,
+) -> tuple[Tensor, Tensor]:
+    coords = torch.arange(size, device=device, dtype=dtype)
+    coords = torch.where(coords >= size / 2, coords - size, coords)
+    grid_y, grid_x = torch.meshgrid(coords, coords, indexing="ij")
+    return torch.sqrt(grid_x**2 + grid_y**2), torch.atan2(grid_y, grid_x)
+
+
+def make_basis(
     size: int,
     num_phase_terms: int = 21,
     num_amp_terms: int = 11,
     device: torch.device | str = "cpu",
     dtype: torch.dtype = torch.float32,
-) -> ZernikeBasis:
-    """Precompute radius-independent Zernike basis components.
-
-    Args:
-        size: Grid size (output pupil is size x size)
-        num_phase_terms: Number of Zernike terms for phase (Noll 1 to N)
-        num_amp_terms: Number of Zernike terms for amplitude
-        device: torch device
-        dtype: torch dtype for basis arrays
-
-    Returns:
-        ZernikeBasis containing precomputed components for runtime evaluation
-    """
-    rho_pixels, theta = make_polar_grid_fft(size, device=device, dtype=dtype)
-
+) -> PupilBasis:
+    rho_pixels, theta = _polar_grid(size, device=device, dtype=dtype)
     max_terms = max(num_phase_terms, num_amp_terms)
-
-    # Precompute angular parts and polynomial coefficients for each term
-    angular_parts_list: list[Tensor] = []
-    coeffs_list: list[list[float]] = []
-    powers_list: list[list[int]] = []
+    angular_parts: list[Tensor] = []
+    radial_coeffs: list[list[float]] = []
+    radial_powers: list[list[int]] = []
 
     for j in range(1, max_terms + 1):
-        n, m = noll_to_nm(j)
-
-        # Angular part: cos(m*theta), sin(|m|*theta), or ones
+        n, m = _noll_to_nm(j)
         if m > 0:
-            angular = torch.cos(m * theta)
+            angular_parts.append(torch.cos(m * theta))
         elif m < 0:
-            angular = torch.sin(abs(m) * theta)
+            angular_parts.append(torch.sin(abs(m) * theta))
         else:
-            angular = torch.ones_like(theta)
-        angular_parts_list.append(angular)
+            angular_parts.append(torch.ones_like(theta))
 
-        coeffs, powers = compute_radial_coefficients(n, abs(m))
-        coeffs_list.append(coeffs)
-        powers_list.append(powers)
+        coeffs, powers = _radial_terms(n, abs(m))
+        radial_coeffs.append(coeffs)
+        radial_powers.append(powers)
 
-    angular_parts = torch.stack(angular_parts_list)  # [max_terms, N, N]
+    max_k = max(len(coeffs) for coeffs in radial_coeffs)
+    coeff_tensor = torch.zeros(max_terms, max_k, device=device, dtype=dtype)
+    power_tensor = torch.zeros(max_terms, max_k, device=device, dtype=dtype)
+    for i, (coeffs, powers) in enumerate(zip(radial_coeffs, radial_powers)):
+        coeff_tensor[i, : len(coeffs)] = torch.tensor(
+            coeffs, device=device, dtype=dtype
+        )
+        power_tensor[i, : len(powers)] = torch.tensor(
+            powers, device=device, dtype=dtype
+        )
 
-    # Zero-pad variable-length coefficients/powers into rectangular float tensors
-    max_k = max(len(c) for c in coeffs_list)
-    poly_coeffs = torch.zeros(max_terms, max_k, device=device, dtype=dtype)
-    poly_powers = torch.zeros(max_terms, max_k, device=device, dtype=dtype)
-    for i, (c, p) in enumerate(zip(coeffs_list, powers_list)):
-        poly_coeffs[i, :len(c)] = torch.tensor(c, dtype=dtype)
-        poly_powers[i, :len(p)] = torch.tensor(p, dtype=dtype)
-
-    return ZernikeBasis(
+    return PupilBasis(
         rho_pixels=rho_pixels,
-        theta=theta,
-        angular_parts=angular_parts,
-        poly_coeffs=poly_coeffs,
-        poly_powers=poly_powers,
+        angular_parts=torch.stack(angular_parts),
+        radial_coeffs=coeff_tensor,
+        radial_powers=power_tensor,
         size=size,
         num_phase_terms=num_phase_terms,
         num_amp_terms=num_amp_terms,
     )
 
 
-def _evaluate_zernike_pupil(
+def _evaluate_pupil(
     phase_coeffs: Float[Tensor, "num_phase"],
     amp_coeffs: Float[Tensor, "num_amp"],
-    basis: ZernikeBasis,
-    rad_fraction: Tensor | float,
+    basis: PupilBasis,
+    radius_fraction: Tensor | float,
     use_softplus: bool,
-) -> tuple[Complex[Tensor, "N N"], Float[Tensor, "N N"]]:
-    """Evaluate the unconstrained Zernike pupil and normalized radius grid.
+) -> Complex[Tensor, "N N"]:
+    radius_fraction = _as_basis_tensor(radius_fraction, basis)
+    rho_norm = basis.rho_pixels / (radius_fraction * basis.size)
+    rho = torch.clamp(rho_norm, max=1.0)
 
-    Args:
-        phase_coeffs: Phase Zernike coefficients [num_phase_terms]
-        amp_coeffs: Amplitude Zernike coefficients [num_amp_terms]
-        basis: Precomputed ZernikeBasis from precompute_zernike_basis()
-        rad_fraction: Pupil radius as fraction of tensor width (can be learnable tensor)
-        use_softplus: If True, apply softplus to ensure non-negative amplitude.
-
-    Returns:
-        Tuple of the complex pupil tensor [N, N] and normalized radial coordinate grid.
-    """
-    # Convert rad_fraction to tensor if needed
-    if not isinstance(rad_fraction, Tensor):
-        rad_fraction = torch.tensor(rad_fraction, device=basis.rho_pixels.device, dtype=basis.rho_pixels.dtype)
-
-    # Compute normalized rho (differentiable w.r.t. rad_fraction)
-    radius_pixels = rad_fraction * basis.size
-    rho_norm = basis.rho_pixels / radius_pixels
-
-    # Clamp to unit disk for polynomial evaluation (Zernike polynomials are
-    # only valid on [0, 1] and diverge outside)
-    rho_clamped = torch.clamp(rho_norm, max=1.0)
-    # Vectorized evaluation of all Zernike terms at once
     num_phase = len(phase_coeffs)
     num_amp = len(amp_coeffs)
     max_terms = max(num_phase, num_amp)
-    rho_powered = rho_clamped[None, None] ** basis.poly_powers[:max_terms, :, None, None]  # [T, K, N, N]
-    radial_all = (basis.poly_coeffs[:max_terms, :, None, None] * rho_powered).sum(dim=1)  # [T, N, N]
-    zernike_all = radial_all * basis.angular_parts[:max_terms]  # [T, N, N]
+    rho_powers = rho[None, None] ** basis.radial_powers[:max_terms, :, None, None]
+    radial = (basis.radial_coeffs[:max_terms, :, None, None] * rho_powers).sum(dim=1)
+    terms = radial * basis.angular_parts[:max_terms]
 
-    phase = torch.einsum("i,ihw->hw", phase_coeffs, zernike_all[:num_phase])
-    amp_raw = torch.einsum("i,ihw->hw", amp_coeffs, zernike_all[:num_amp])
-    amplitude = torch.nn.functional.softplus(amp_raw) if use_softplus else amp_raw
+    phase = torch.einsum("i,ihw->hw", phase_coeffs, terms[:num_phase])
+    amp_raw = torch.einsum("i,ihw->hw", amp_coeffs, terms[:num_amp])
+    amplitude = F.softplus(amp_raw) if use_softplus else amp_raw
 
-    pupil = amplitude * torch.exp(1j * phase)
-
-    return pupil, rho_norm
+    return amplitude * torch.exp(1j * phase)
 
 
-def make_zernike_pupil_unmasked(
+def init_raw_bounded_radius(
+    value: float,
+    min_value: float,
+    max_value: float,
+    device: torch.device | str = "cpu",
+    requires_grad: bool = True,
+) -> Tensor:
+    if not min_value < value < max_value:
+        raise ValueError(
+            "value must be between min_value and max_value; "
+            f"got value={value}, min={min_value}, max={max_value}"
+        )
+
+    frac = (value - min_value) / (max_value - min_value)
+    frac = min(max(frac, 1e-6), 1.0 - 1e-6)
+    raw = math.log(frac / (1.0 - frac))
+    tensor = torch.tensor(raw, device=device, dtype=torch.float32)
+    return tensor.requires_grad_(True) if requires_grad else tensor
+
+
+def bounded_radius(raw_radius: Tensor, min_value: float, max_value: float) -> Tensor:
+    return min_value + (max_value - min_value) * torch.sigmoid(raw_radius)
+
+
+def make_aperture(
+    basis: PupilBasis,
+    radius_fraction: Tensor | float,
+    edge_width_px: Tensor | float = 2.0,
+) -> Float[Tensor, "N N"]:
+    radius_fraction = _as_basis_tensor(radius_fraction, basis)
+    edge_width_px = _as_basis_tensor(edge_width_px, basis)
+    return torch.sigmoid(
+        (radius_fraction * basis.size - basis.rho_pixels) / edge_width_px
+    )
+
+
+def make_pupil(
     phase_coeffs: Float[Tensor, "num_phase"],
     amp_coeffs: Float[Tensor, "num_amp"],
-    basis: ZernikeBasis,
-    rad_fraction: Tensor | float,
+    basis: PupilBasis,
+    radius_fraction: Tensor | float,
+    edge_width_px: Tensor | float = 2.0,
     use_softplus: bool = True,
 ) -> Complex[Tensor, "N N"]:
-    """Generate a smooth Zernike pupil without applying a hard aperture mask."""
-    pupil, _ = _evaluate_zernike_pupil(
+    pupil = _evaluate_pupil(
         phase_coeffs,
         amp_coeffs,
         basis,
-        rad_fraction,
+        radius_fraction,
         use_softplus=use_softplus,
     )
-    return pupil
-
-
-def make_zernike_pupil_masked(
-    phase_coeffs: Float[Tensor, "num_phase"],
-    amp_coeffs: Float[Tensor, "num_amp"],
-    basis: ZernikeBasis,
-    rad_fraction: Tensor | float,
-    use_softplus: bool = True,
-) -> Complex[Tensor, "N N"]:
-    """Generate a physical Zernike pupil with a hard circular aperture mask."""
-    pupil, rho_norm = _evaluate_zernike_pupil(
-        phase_coeffs,
-        amp_coeffs,
-        basis,
-        rad_fraction,
-        use_softplus=use_softplus,
-    )
-    aperture_mask = (rho_norm <= 1.0).to(pupil.real.dtype)
-    return pupil * aperture_mask
+    aperture = make_aperture(basis, radius_fraction, edge_width_px)
+    return pupil * aperture.to(pupil.real.dtype)
 
 
 def init_phase_coeffs(
@@ -315,11 +237,8 @@ def init_phase_coeffs(
     device: torch.device | str = "cpu",
     requires_grad: bool = True,
 ) -> Tensor:
-    """Initialize phase coefficients (all zeros = no aberration)."""
     coeffs = torch.zeros(num_terms, device=device)
-    if requires_grad:
-        coeffs = coeffs.requires_grad_(True)
-    return coeffs
+    return coeffs.requires_grad_(True) if requires_grad else coeffs
 
 
 def init_amp_coeffs(
@@ -327,33 +246,19 @@ def init_amp_coeffs(
     device: torch.device | str = "cpu",
     requires_grad: bool = True,
 ) -> Tensor:
-    """Initialize amplitude coefficients (piston=1, rest=0 = uniform transmission)."""
     coeffs = torch.zeros(num_terms, device=device)
     coeffs[0] = 1.0
-    if requires_grad:
-        coeffs = coeffs.requires_grad_(True)
-    return coeffs
+    return coeffs.requires_grad_(True) if requires_grad else coeffs
 
 
-def init_rad_fraction(
+def init_radius(
     value: float = 0.2,
     device: torch.device | str = "cpu",
     requires_grad: bool = True,
 ) -> Tensor:
-    """Initialize pupil radius fraction (as fraction of tensor width).
+    radius = torch.tensor(value, device=device)
+    return radius.requires_grad_(True) if requires_grad else radius
 
-    Args:
-        value: Initial radius as fraction of tensor size (e.g., 0.2 = 20% of width)
-        device: torch device
-        requires_grad: Whether the radius should be learnable
-
-    Returns:
-        Scalar tensor for rad_fraction
-    """
-    rad = torch.tensor(value, device=device)
-    if requires_grad:
-        rad = rad.requires_grad_(True)
-    return rad
 
 def make_ideal_pupil(
     object_grid_size: int,
@@ -365,27 +270,25 @@ def make_ideal_pupil(
     num_phase_terms: int = 1,
     num_amp_terms: int = 1,
     device: torch.device | str | None = None,
-) -> ZernikeParams:
-    """Create an ideal (aberration-free) Zernike pupil parameterization.
-
-    Computes the pupil radius from the numerical aperture and optical
-    parameters, then returns ZernikeParams with uniform amplitude
-    (piston only) and zero phase. Can be passed directly to solve_inverse
-    for learning, or evaluated via make_zernike_pupil to get a tensor.
-    """
+) -> Pupil:
     dx_obj = sensor_pixel_size_m / (magnification * object_to_capture_ratio)
-    fc = numerical_aperture / wavelength_m  # coherent cutoff in cycles/meter
-    rad_fraction_val = fc * dx_obj  # cutoff as fraction of Fourier grid width
+    radius_fraction = (numerical_aperture / wavelength_m) * dx_obj
+    target_device = device or "cpu"
 
-    _device = device or "cpu"
-    basis = precompute_zernike_basis(
-        object_grid_size,
-        num_phase_terms=num_phase_terms,
-        num_amp_terms=num_amp_terms,
-        device=_device,
+    return Pupil(
+        phase_coeffs=init_phase_coeffs(
+            num_phase_terms, device=target_device, requires_grad=False
+        ),
+        amp_coeffs=init_amp_coeffs(
+            num_amp_terms, device=target_device, requires_grad=False
+        ),
+        basis=make_basis(
+            object_grid_size,
+            num_phase_terms=num_phase_terms,
+            num_amp_terms=num_amp_terms,
+            device=target_device,
+        ),
+        radius_fraction=init_radius(
+            radius_fraction, device=target_device, requires_grad=False
+        ),
     )
-    phase_coeffs = init_phase_coeffs(num_phase_terms, device=_device, requires_grad=False)
-    amp_coeffs = init_amp_coeffs(num_amp_terms, device=_device, requires_grad=False)
-    rad_fraction = init_rad_fraction(rad_fraction_val, device=_device, requires_grad=False)
-
-    return ZernikeParams(phase_coeffs, amp_coeffs, basis, rad_fraction)

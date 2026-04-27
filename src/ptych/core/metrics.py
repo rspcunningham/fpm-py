@@ -6,7 +6,7 @@ from typing import TypedDict
 import torch
 from jaxtyping import Complex
 
-from ptych.core.pupil import ZernikeParams
+from ptych.core.pupil import Pupil
 
 
 # Tile start in capture-space as (y_start, x_start).
@@ -24,5 +24,9 @@ class BatchMetricsRecord(TypedDict):
     metrics: InverseMetrics
 
 
-type TileCompleteCallback = Callable[[int, int, torch.Tensor, ZernikeParams, InverseMetrics], None]
-type BatchCompleteCallback = Callable[[list[TileCoord], list[ZernikeParams], InverseMetrics], None]
+type TileCompleteCallback = Callable[
+    [int, int, torch.Tensor, Pupil, InverseMetrics], None
+]
+type BatchCompleteCallback = Callable[
+    [list[TileCoord], list[Pupil], InverseMetrics], None
+]

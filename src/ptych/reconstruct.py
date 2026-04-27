@@ -11,7 +11,7 @@ from ptych.core.metrics import (
     BatchMetricsRecord,
     TileCompleteCallback,
 )
-from ptych.core.pupil import ZernikeParams
+from ptych.core.pupil import Pupil
 from ptych.core.tiled import solve_tiled_from_inputs
 from ptych.data.study import PtychStudy
 from ptych.data.types import Capture
@@ -84,7 +84,9 @@ class CaptureRegion:
 
 
 def _valid_study_captures(study: PtychStudy) -> list[Capture]:
-    valid_captures = [capture for capture in study.manifest.captures if capture.led_positions]
+    valid_captures = [
+        capture for capture in study.manifest.captures if capture.led_positions
+    ]
     if len(valid_captures) != study.captures.shape[0]:
         raise ValueError(
             "Study manifest captures do not align with loaded study tensors. "
@@ -101,17 +103,17 @@ def _crop_captures(
     width = captures.shape[-1]
 
     if region.x_left < 0 or region.y_top < 0:
-        raise ValueError(
-            f"Capture region has negative bounds: {region}"
-        )
+        raise ValueError(f"Capture region has negative bounds: {region}")
     if region.x_right > width or region.y_bottom > height:
         raise ValueError(
             f"Capture region {region} exceeds capture dimensions ({height}x{width})"
         )
     if region.x_left >= region.x_right or region.y_top >= region.y_bottom:
-        raise ValueError(f"Capture region must have positive width and height: {region}")
+        raise ValueError(
+            f"Capture region must have positive width and height: {region}"
+        )
 
-    return captures[..., region.y_top:region.y_bottom, region.x_left:region.x_right]
+    return captures[..., region.y_top : region.y_bottom, region.x_left : region.x_right]
 
 
 def _prepare_study_inputs(
@@ -140,7 +142,7 @@ def _prepare_study_inputs(
 
 def solve_study(
     study: PtychStudy,
-    pupil: ZernikeParams,
+    pupil: Pupil,
     *,
     capture_selector: CaptureSelector = None,
     capture_region: CaptureRegion,
@@ -160,21 +162,23 @@ def solve_study(
         captures=capture_selector,
         capture_region=capture_region,
     )
-    reconstruction_history, checkpoint_epochs, tile_pupils, batch_metrics = solve_tiled_from_inputs(
-        captures,
-        kx_batch,
-        ky_batch,
-        pupil,
-        tile_size=tile_size,
-        object_to_capture_ratio=object_to_capture_ratio,
-        epochs=epochs,
-        torch_device=torch_device,
-        learn_pupil=learn_pupil,
-        learn_k_vectors=learn_k_vectors,
-        checkpoint_interval=checkpoint_interval,
-        on_tile_complete=on_tile_complete,
-        on_batch_complete=on_batch_complete,
-        tile_batch_size=tile_batch_size,
+    reconstruction_history, checkpoint_epochs, tile_pupils, batch_metrics = (
+        solve_tiled_from_inputs(
+            captures,
+            kx_batch,
+            ky_batch,
+            pupil,
+            tile_size=tile_size,
+            object_to_capture_ratio=object_to_capture_ratio,
+            epochs=epochs,
+            torch_device=torch_device,
+            learn_pupil=learn_pupil,
+            learn_k_vectors=learn_k_vectors,
+            checkpoint_interval=checkpoint_interval,
+            on_tile_complete=on_tile_complete,
+            on_batch_complete=on_batch_complete,
+            tile_batch_size=tile_batch_size,
+        )
     )
     return StudySolveResult(
         reconstruction_history=reconstruction_history,
