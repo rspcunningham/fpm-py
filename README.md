@@ -37,5 +37,3 @@ Optimization objective:
 ```
 
 ![Block diagram](docs/block-diagram-zernike.png)
-
-This repo uses a custom dataset structure [INFO_JSON_SCHEMA.md](INFO_JSON_SCHEMA.md) / [src/ptych/data/study.py](src/ptych/data/study.py) and pulls from our NextCloud-based data repository [src/ptych/data/download/dataset_cache.py](src/ptych/data/download/dataset_cache.py).
