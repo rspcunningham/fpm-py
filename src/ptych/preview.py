@@ -15,7 +15,7 @@ from jaxtyping import Float
 
 from ptych.data.study import PtychStudy
 from ptych.data.types import Capture, is_illuminated_capture
-from ptych.reconstruct import CaptureRegion
+from ptych.core.solver import CaptureRegion
 
 type ObjectPreviewMode = Literal["intensity", "amplitude", "phase"]
 

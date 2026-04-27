@@ -1,14 +1,17 @@
-from ptych.core import forward_model, solve_inverse
+from ptych.core import InversePtychographyModel, Object, forward_model
+from ptych.core.solver import (
+    CaptureRegion,
+    StudySolveResult,
+    solve_study,
+)
 from ptych.data.study import PtychStudy
-from ptych.reconstruct import CaptureRange, CaptureRegion, CaptureSelector, StudySolveResult, solve_study
 
 __all__ = [
     'forward_model',
-    'solve_inverse',
+    'InversePtychographyModel',
+    'Object',
     'solve_study',
     'StudySolveResult',
-    'CaptureRange',
     'CaptureRegion',
-    'CaptureSelector',
     'PtychStudy',
 ]

@@ -11,15 +11,9 @@ ifft2 = cast(Callable[..., torch.Tensor], partial(torch.fft.ifft2, norm="ortho")
 
 
 class PtychographicForward(nn.Module):
-    def __init__(
-        self,
-        object_grid_size: int,
-        *,
-        device: torch.device | str | None = None,
-        dtype: torch.dtype = torch.float32,
-    ) -> None:
+    def __init__(self, object_grid_size: int) -> None:
         super().__init__()
-        coords = torch.arange(object_grid_size, dtype=dtype, device=device)
+        coords = torch.arange(object_grid_size, dtype=torch.get_default_dtype())
         y_grid, x_grid = torch.meshgrid(coords, coords, indexing="ij")
         self.object_grid_size = object_grid_size
         self.register_buffer("x_grid", x_grid)
@@ -62,7 +56,9 @@ def forward_model(
     kx: Float[torch.Tensor, "B"],
     ky: Float[torch.Tensor, "B"],
 ) -> Float[torch.Tensor, "T B N N"]:
-    return PtychographicForward(
-        object_tensor.shape[-1],
-        device=object_tensor.device,
-    )(object_tensor, pupil_tensor, kx, ky)
+    return PtychographicForward(object_tensor.shape[-1]).to(object_tensor.device)(
+        object_tensor,
+        pupil_tensor,
+        kx,
+        ky,
+    )

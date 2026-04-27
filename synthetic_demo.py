@@ -70,7 +70,6 @@ pupil_params = Pupil(
         magnification=synthetic_manifest.magnification,
         object_to_capture_ratio=object_to_capture_ratio,
     ),
-    use_softplus=False,
 )
 with torch.no_grad():
     pupil_tensor = pupil_params()[0]

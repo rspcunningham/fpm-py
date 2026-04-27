@@ -2,7 +2,7 @@
 
 Fourier ptychography in PyTorch.
 
-This repository contains a forward model, an inverse solver, dataset loading utilities, and a pair of runnable demos for synthetic data generation and tiled reconstruction. The current codebase is centered around study manifests (`info.json` + `captures/`) and a tiled reconstruction pipeline built on PyTorch tensors.
+This repository contains a forward model, an inverse solver, dataset loading utilities, and a pair of runnable demos for synthetic data generation and reconstruction. The current codebase is centered around study manifests (`info.json` + `captures/`) and a PyTorch reconstruction pipeline.
 
 ## What It Does
 
@@ -10,7 +10,7 @@ This repository contains a forward model, an inverse solver, dataset loading uti
 - Computes illumination k-vectors from LED geometry and optics metadata
 - Simulates capture stacks from a complex object and pupil
 - Reconstructs a higher-resolution complex object from measured captures
-- Supports tiled reconstruction for larger fields of view
+- Supports patch-batched reconstruction for larger fields of view
 - Produces previews and simple experiment artifacts under `results/` and `experiments/`
 
 ## Quick Start
@@ -75,14 +75,14 @@ What it does:
 - Loads the `usaf-test` dataset through [`PtychStudy`](src/ptych/data/study.py)
 - Crops and demosaics the capture stack
 - Initializes an ideal pupil parameterization
-- Reconstructs tiled high-resolution complex objects with the inverse solver
-- Stitches the reconstructed tiles into a single output
+- Reconstructs high-resolution complex object patches with the inverse solver
+- Stitches the reconstructed patches into a single output
 
 Output layout:
 
 - `results/reconstruction_usaf_test/reconstruction_metrics.png`
-- `results/reconstruction_usaf_test/stitched_object.npy`
-- `results/reconstruction_usaf_test/stitched_object.png`
+- `results/reconstruction_usaf_test/reconstruction.npy`
+- `results/reconstruction_usaf_test/reconstruction.png`
 
 ## Data Model
 
@@ -119,9 +119,9 @@ This ratio is used to:
 - average-pool model predictions back to the capture grid
 - define the effective object-plane sampling used to build the pupil
 
-### Tiled Reconstruction
+### Reconstruction
 
-The reconstruction pipeline solves square capture tiles independently, then stitches the reconstructed high-resolution tiles into one output image. The main entry point is [`solve_study`](src/ptych/reconstruct.py), which delegates to the tiled solver in [`src/ptych/core/tiled.py`](src/ptych/core/tiled.py).
+The reconstruction pipeline solves square capture patches independently, then stitches the reconstructed high-resolution patches into one output image. The main entry point is [`solve_study`](src/ptych/core/solver.py).
 
 ## Public API
 
@@ -129,9 +129,9 @@ The package currently exports:
 
 - [`PtychStudy`](src/ptych/data/study.py)
 - [`forward_model`](src/ptych/core/forward.py)
-- [`solve_inverse`](src/ptych/core/inverse.py)
-- [`solve_study`](src/ptych/reconstruct.py)
-- [`StudySolveResult`](src/ptych/reconstruct.py)
+- [`InversePtychographyModel`](src/ptych/core/inverse.py)
+- [`solve_study`](src/ptych/core/solver.py)
+- [`StudySolveResult`](src/ptych/core/solver.py)
 
 ## Repository Layout
 
@@ -139,10 +139,10 @@ The package currently exports:
 src/ptych/
   core/
     forward.py      Shared forward model
-    inverse.py      Inverse solver
+    inverse.py      Inverse model definition
+    solver.py       Study reconstruction, optimization, and stitching
     pupil.py        Pupil parameterization and Zernike helpers
     synthetic.py    Synthetic capture generation
-    tiled.py        Tiled reconstruction and stitching
   data/
     study.py        Study container and loading
     synthetic.py    Synthetic study writer

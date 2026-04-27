@@ -23,6 +23,16 @@ def bounded_radius(raw_radius: Tensor, min_value: float, max_value: float) -> Te
     return min_value + (max_value - min_value) * torch.sigmoid(raw_radius)
 
 
+def _raw_softplus_value(value: Tensor) -> Tensor:
+    return value + torch.log(-torch.expm1(-value))
+
+
+def _init_tensor(value: Tensor | float) -> Tensor:
+    if isinstance(value, Tensor):
+        return value.detach().cpu().clone()
+    return torch.tensor(value)
+
+
 class Pupil(nn.Module):
     def __init__(
         self,
@@ -35,34 +45,20 @@ class Pupil(nn.Module):
         radius_fraction: Tensor | float = 0.2,
         num_tiles: int | None = None,
         edge_width_px: float = 2.0,
-        use_softplus: bool = True,
         radius_bounds: tuple[float, float] | None = None,
     ) -> None:
         super().__init__()
         num_tiles = num_tiles or 1
-        seed_tensor = next(
-            (
-                value
-                for value in (phase_coeffs, amp_coeffs, radius_fraction)
-                if isinstance(value, Tensor)
-            ),
-            None,
-        )
-        target_device = seed_tensor.device if seed_tensor is not None else "cpu"
-        dtype = seed_tensor.dtype if seed_tensor is not None else torch.float32
         self.object_grid_size = object_grid_size
         self.num_phase_terms = num_phase_terms
         self.num_amp_terms = num_amp_terms
         self.num_tiles = num_tiles
         self.edge_width_px = edge_width_px
-        self.use_softplus = use_softplus
 
         rho_pixels, angular_parts, radial_coeffs, radial_powers = zernike_basis_tensors(
             object_grid_size,
             num_phase_terms,
             num_amp_terms,
-            device=target_device,
-            dtype=dtype,
         )
         self.register_buffer("rho_pixels", rho_pixels)
         self.register_buffer("angular_parts", angular_parts)
@@ -70,23 +66,17 @@ class Pupil(nn.Module):
         self.register_buffer("radial_powers", radial_powers)
 
         if phase_coeffs is None:
-            phase = torch.zeros(num_phase_terms, device=target_device, dtype=dtype)
+            phase = torch.zeros(num_phase_terms)
         else:
-            phase = phase_coeffs.detach().clone().to(device=target_device, dtype=dtype)
+            phase = _init_tensor(phase_coeffs)
 
         if amp_coeffs is None:
-            amp = torch.zeros(num_amp_terms, device=target_device, dtype=dtype)
-            amp[0] = 1.0
+            amp = torch.zeros(num_amp_terms)
+            amp[0] = _raw_softplus_value(torch.ones(()))
         else:
-            amp = amp_coeffs.detach().clone().to(device=target_device, dtype=dtype)
+            amp = _init_tensor(amp_coeffs)
 
-        if isinstance(radius_fraction, Tensor):
-            radius = radius_fraction.detach().clone().to(
-                device=target_device,
-                dtype=dtype,
-            )
-        else:
-            radius = torch.tensor(radius_fraction, device=target_device, dtype=dtype)
+        radius = _init_tensor(radius_fraction)
 
         if phase.ndim == 1:
             phase = phase.reshape(1, -1).repeat(num_tiles, 1)
@@ -148,22 +138,17 @@ class Pupil(nn.Module):
 
         phase = torch.einsum("ti,tihw->thw", self.phase_coeffs, terms[:, :num_phase])
         amp_raw = torch.einsum("ti,tihw->thw", self.amp_coeffs, terms[:, :num_amp])
-        amplitude = F.softplus(amp_raw) if self.use_softplus else amp_raw
+        amplitude = F.softplus(amp_raw)
         pupil = amplitude * torch.exp(1j * phase)
 
-        edge_width_px = torch.tensor(
-            self.edge_width_px,
-            device=rho_pixels.device,
-            dtype=rho_pixels.dtype,
-        )
         aperture = torch.sigmoid(
             (
                 radius_fraction[:, None, None] * self.object_grid_size
                 - rho_pixels[None]
             )
-            / edge_width_px
+            / self.edge_width_px
         )
-        return pupil * aperture.to(pupil.real.dtype)
+        return pupil * aperture
 
 
 def radius_fraction_from_optics(

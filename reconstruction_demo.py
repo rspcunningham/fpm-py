@@ -1,9 +1,10 @@
 from pathlib import Path
 
-from preview_utils import save_metrics_summary, save_preview_png, save_tensor
+from preview_utils import save_metrics_summary, save_tensor
 from ptych import CaptureRegion, PtychStudy, solve_study
-from ptych.core.pupil import Pupil, radius_fraction_from_optics
+from ptych.core.pupil import radius_fraction_from_optics
 from ptych.data.types import is_illuminated_capture
+from ptych.preview import render_scalar_preview_png
 
 dataset = "usaf-test-dark"
 
@@ -11,9 +12,8 @@ dataset = "usaf-test-dark"
 study = PtychStudy.load(dataset)
 
 # Reconstruction geometry settings
-TILE_SIZE = 128
-CROP_SIZE = 128
-CAPTURE_SELECTION = None
+PATCH_SIZE = 256
+CROP_SIZE = 256
 
 OBJECT_TO_CAPTURE_RATIO = 4
 NUMERICAL_APERTURE = (
@@ -24,8 +24,8 @@ NUM_AMP_TERMS = 10
 
 # Optimization and runtime settings
 TORCH_DEVICE = "mps"  # Switch to "cpu" or "cuda".
-TILE_BATCH_SIZE = 16
-EPOCHS = 50
+BATCH_SIZE = 16
+EPOCHS = 200
 
 # Output directory
 OUTPUT_DIR = Path(f"results/{dataset}")
@@ -36,17 +36,12 @@ study_wavelength = next(
     capture for capture in study.manifest.captures if is_illuminated_capture(capture)
 ).wavelength
 
-pupil = Pupil(
-    object_grid_size=TILE_SIZE * OBJECT_TO_CAPTURE_RATIO,
-    num_phase_terms=NUM_PHASE_TERMS,
-    num_amp_terms=NUM_AMP_TERMS,
-    radius_fraction=radius_fraction_from_optics(
-        numerical_aperture=NUMERICAL_APERTURE,
-        wavelength_m=study_wavelength,
-        sensor_pixel_size_m=study.manifest.sensor_pixel_size,
-        magnification=study.manifest.magnification,
-        object_to_capture_ratio=OBJECT_TO_CAPTURE_RATIO,
-    ),
+pupil_radius_fraction = radius_fraction_from_optics(
+    numerical_aperture=NUMERICAL_APERTURE,
+    wavelength_m=study_wavelength,
+    sensor_pixel_size_m=study.manifest.sensor_pixel_size,
+    magnification=study.manifest.magnification,
+    object_to_capture_ratio=OBJECT_TO_CAPTURE_RATIO,
 )
 
 capture_region = CaptureRegion.centered_square(
@@ -58,33 +53,41 @@ capture_region = CaptureRegion.centered_square(
 # Run reconstruction.
 result = solve_study(
     study,
-    pupil,
-    capture_selector=CAPTURE_SELECTION,
     capture_region=capture_region,
-    tile_size=TILE_SIZE,
+    patch_size=PATCH_SIZE,
     object_to_capture_ratio=OBJECT_TO_CAPTURE_RATIO,
+    pupil_radius_fraction=pupil_radius_fraction,
+    pupil_num_phase_terms=NUM_PHASE_TERMS,
+    pupil_num_amp_terms=NUM_AMP_TERMS,
     epochs=EPOCHS,
-    torch_device=TORCH_DEVICE,
-    tile_batch_size=TILE_BATCH_SIZE,
+    device=TORCH_DEVICE,
+    batch_size=BATCH_SIZE,
 )
 
 # Save reconstruction artifacts.
 save_metrics_summary(
-    result.batch_metrics,
+    result.metrics,
     path=OUTPUT_DIR / "reconstruction_metrics.png",
 )
 
-stitched_object = result.reconstruction
-save_tensor(stitched_object, OUTPUT_DIR / "stitched_object.npy")
-save_preview_png(
-    stitched_object,
-    OUTPUT_DIR / "stitched_object.png",
-    mode="intensity",
+reconstruction = result.reconstruction
+save_tensor(reconstruction, OUTPUT_DIR / "reconstruction.npy")
+save_tensor(result.raw_object_amplitude, OUTPUT_DIR / "raw_object_amplitude.npy")
+save_tensor(result.raw_object_phase, OUTPUT_DIR / "raw_object_phase.npy")
+
+render_scalar_preview_png(
+    reconstruction,
+    path=OUTPUT_DIR / "reconstruction.png",
 )
-save_preview_png(
-    stitched_object,
-    OUTPUT_DIR / "stitched_phase.png",
-    mode="phase",
+render_scalar_preview_png(
+    result.raw_object_amplitude,
+    path=OUTPUT_DIR / "raw_object_amplitude.png",
+)
+render_scalar_preview_png(
+    result.raw_object_phase,
+    path=OUTPUT_DIR / "raw_object_phase.png",
 )
 print(f"Reconstruction tensor: {result.reconstruction.shape}")
-print(f"Stitched result shape: {stitched_object.shape}")
+print(f"Raw object amplitude tensor: {result.raw_object_amplitude.shape}")
+print(f"Raw object phase tensor: {result.raw_object_phase.shape}")
+print(f"Stitched result shape: {reconstruction.shape}")

@@ -38,11 +38,8 @@ def zernike_basis_tensors(
     object_grid_size: int,
     num_phase_terms: int,
     num_amp_terms: int,
-    *,
-    device: torch.device | str,
-    dtype: torch.dtype,
 ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
-    coords = torch.arange(object_grid_size, device=device, dtype=dtype)
+    coords = torch.arange(object_grid_size, dtype=torch.get_default_dtype())
     coords = torch.where(
         coords >= object_grid_size / 2, coords - object_grid_size, coords
     )
@@ -68,14 +65,10 @@ def zernike_basis_tensors(
         radial_powers.append(powers)
 
     max_k = max(len(coeffs) for coeffs in radial_coeffs)
-    coeff_tensor = torch.zeros(max_terms, max_k, device=device, dtype=dtype)
-    power_tensor = torch.zeros(max_terms, max_k, device=device, dtype=dtype)
+    coeff_tensor = torch.zeros(max_terms, max_k)
+    power_tensor = torch.zeros(max_terms, max_k)
     for i, (coeffs, powers) in enumerate(zip(radial_coeffs, radial_powers)):
-        coeff_tensor[i, : len(coeffs)] = torch.tensor(
-            coeffs, device=device, dtype=dtype
-        )
-        power_tensor[i, : len(powers)] = torch.tensor(
-            powers, device=device, dtype=dtype
-        )
+        coeff_tensor[i, : len(coeffs)] = torch.tensor(coeffs)
+        power_tensor[i, : len(powers)] = torch.tensor(powers)
 
     return rho_pixels, torch.stack(angular_parts), coeff_tensor, power_tensor
