@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 from jaxtyping import Complex, Float
 
-from ptych.core.forward import forward_model
+from ptych.core.forward import PtychographicForward
 
 
 def synthesize_captures(
@@ -30,7 +30,10 @@ def synthesize_captures(
     ky_batch = ky_batch / object_to_capture_ratio
 
     # Run forward model at full resolution (add T=1 batch dim)
-    intensities = forward_model(
+    image_formation = PtychographicForward(object_tensor.shape[-1]).to(
+        object_tensor.device
+    )
+    intensities = image_formation(
         object_tensor[None],
         pupil_tensor[None],
         kx_batch,

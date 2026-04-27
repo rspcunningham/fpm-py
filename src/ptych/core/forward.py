@@ -48,17 +48,3 @@ class PtychographicForward(nn.Module):
         filtered_fourier = pupil_tensor[:, None] * objects_fourier
         complex_image_fields = ifft2(filtered_fourier)
         return torch.abs(complex_image_fields) ** 2
-
-
-def forward_model(
-    object_tensor: Complex[torch.Tensor, "T N N"],
-    pupil_tensor: Complex[torch.Tensor, "T N N"],
-    kx: Float[torch.Tensor, "B"],
-    ky: Float[torch.Tensor, "B"],
-) -> Float[torch.Tensor, "T B N N"]:
-    return PtychographicForward(object_tensor.shape[-1]).to(object_tensor.device)(
-        object_tensor,
-        pupil_tensor,
-        kx,
-        ky,
-    )

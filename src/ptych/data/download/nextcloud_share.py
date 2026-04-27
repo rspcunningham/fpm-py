@@ -462,16 +462,6 @@ class NextcloudShareTransport:
 
         return dataset_root
 
-    def download_directory_zip(
-        self, dataset_id: str, destination_path: str | Path
-    ) -> Path:
-        return download_directory_zip_to_path(
-            self.base_url,
-            self.share_id,
-            dataset_id,
-            destination_path,
-        )
-
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
