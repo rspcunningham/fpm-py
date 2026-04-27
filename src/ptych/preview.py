@@ -14,7 +14,7 @@ import torch
 from jaxtyping import Float
 
 from ptych.data.study import PtychStudy
-from ptych.data.types import Capture
+from ptych.data.types import Capture, is_illuminated_capture
 from ptych.reconstruct import CaptureRegion
 
 type ObjectPreviewMode = Literal["intensity", "amplitude", "phase"]
@@ -67,7 +67,11 @@ def _crop_capture_channels(
 
 
 def _valid_study_captures(study: PtychStudy) -> list[Capture]:
-    valid_captures = [capture for capture in study.manifest.captures if capture.led_positions]
+    valid_captures = [
+        capture
+        for capture in study.manifest.captures
+        if is_illuminated_capture(capture)
+    ]
     if len(valid_captures) != study.captures.shape[0]:
         raise ValueError(
             "Study manifest captures do not align with loaded study tensors. "

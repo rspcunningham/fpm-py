@@ -9,7 +9,8 @@ from PIL import Image
 
 from ptych import PtychStudy
 from ptych.data.synthetic import generate_synthetic_study
-from ptych.core.pupil import make_ideal_pupil, make_pupil
+from ptych.core.pupil import Pupil, radius_fraction_from_optics
+from ptych.data.types import is_illuminated_capture
 
 IDEAL_IMAGE_PATH = Path("demo_images/ideal.png")
 OUTPUT_DIR = Path("results/synthetic_usaf_test")
@@ -55,22 +56,24 @@ assert N % capture_size == 0, (
 object_to_capture_ratio = N // capture_size
 print(f"Using object-to-capture ratio: {object_to_capture_ratio}")
 
-pupil_capture = next(capture for capture in synthetic_manifest.captures if capture.led_positions)
-pupil_params = make_ideal_pupil(
-    object_grid_size=N,
-    numerical_aperture=0.13,
-    wavelength_m=pupil_capture.wavelength,
-    sensor_pixel_size_m=synthetic_manifest.sensor_pixel_size,
-    magnification=synthetic_manifest.magnification,
-    object_to_capture_ratio=object_to_capture_ratio,
+pupil_capture = next(
+    capture
+    for capture in synthetic_manifest.captures
+    if is_illuminated_capture(capture)
 )
-pupil_tensor = make_pupil(
-    pupil_params.phase_coeffs,
-    pupil_params.amp_coeffs,
-    pupil_params.basis,
-    pupil_params.radius_fraction,
+pupil_params = Pupil(
+    object_grid_size=N,
+    radius_fraction=radius_fraction_from_optics(
+        numerical_aperture=0.13,
+        wavelength_m=pupil_capture.wavelength,
+        sensor_pixel_size_m=synthetic_manifest.sensor_pixel_size,
+        magnification=synthetic_manifest.magnification,
+        object_to_capture_ratio=object_to_capture_ratio,
+    ),
     use_softplus=False,
 )
+with torch.no_grad():
+    pupil_tensor = pupil_params()
 
 # Run synthetic study generation
 captures = generate_synthetic_study(

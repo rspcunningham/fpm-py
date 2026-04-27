@@ -5,7 +5,15 @@ from pathlib import Path
 from typing import cast
 from uuid import UUID
 
-from .types import Capture, CaptureDimensions, LedPosition, StudyManifest
+from .types import (
+    Capture,
+    CaptureDimensions,
+    DarkfieldCapture,
+    LedPosition,
+    ManifestCapture,
+    StudyManifest,
+    is_illuminated_capture,
+)
 
 
 class ManifestParseError(Exception):
@@ -82,7 +90,6 @@ def manifest_to_dict(manifest: StudyManifest) -> dict[str, object]:
     for capture in manifest.captures:
         capture_data: dict[str, object] = {
             "filename": capture.filename,
-            "wavelength": capture.wavelength,
             "led_positions": [
                 {
                     "x": position.x,
@@ -92,6 +99,8 @@ def manifest_to_dict(manifest: StudyManifest) -> dict[str, object]:
                 for position in capture.led_positions
             ],
         }
+        if is_illuminated_capture(capture):
+            capture_data["wavelength"] = capture.wavelength
         if capture.captured_at is not None:
             capture_data["captured_at"] = capture.captured_at.isoformat()
         if capture.exposure is not None:
@@ -132,7 +141,7 @@ def parse_manifest(data: dict[str, object]) -> StudyManifest:
         ManifestParseError: If required keys are missing or values have incorrect types.
     """
     captures_raw = _require_list(data, "captures")
-    captures: list[Capture] = []
+    captures: list[ManifestCapture] = []
 
     for i, cap_raw in enumerate(captures_raw):
         cap = _require_dict(cap_raw, f"captures[{i}]")
@@ -149,13 +158,24 @@ def parse_manifest(data: dict[str, object]) -> StudyManifest:
 
         captured_at_str = _optional_str(cap, "captured_at")
 
-        captures.append(Capture(
-            filename=_require_str(cap, "filename", f"captures[{i}]"),
-            wavelength=_require_num(cap, "wavelength", f"captures[{i}]"),
-            led_positions=led_positions,
-            captured_at=datetime.fromisoformat(captured_at_str) if captured_at_str else None,
-            exposure=_optional_num(cap, "exposure"),
-        ))
+        filename = _require_str(cap, "filename", f"captures[{i}]")
+        captured_at = datetime.fromisoformat(captured_at_str) if captured_at_str else None
+        exposure = _optional_num(cap, "exposure")
+        if led_positions:
+            captures.append(Capture(
+                filename=filename,
+                wavelength=_require_num(cap, "wavelength", f"captures[{i}]"),
+                led_positions=led_positions,
+                captured_at=captured_at,
+                exposure=exposure,
+            ))
+        else:
+            captures.append(DarkfieldCapture(
+                filename=filename,
+                led_positions=led_positions,
+                captured_at=captured_at,
+                exposure=exposure,
+            ))
 
     version = _optional_str(data, "version")
     metadata_raw = data.get("metadata")

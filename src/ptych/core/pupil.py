@@ -1,66 +1,11 @@
 import math
-from typing import NamedTuple
+from typing import cast
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from jaxtyping import Complex, Float
 from torch import Tensor
-
-
-class PupilBasis:
-    """Precomputed radius-independent basis terms."""
-
-    rho_pixels: Float[Tensor, "N N"]
-    angular_parts: Float[Tensor, "max_terms N N"]
-    radial_coeffs: Float[Tensor, "max_terms max_k"]
-    radial_powers: Float[Tensor, "max_terms max_k"]
-    size: int
-    num_phase_terms: int
-    num_amp_terms: int
-
-    def __init__(
-        self,
-        rho_pixels: Tensor,
-        angular_parts: Tensor,
-        radial_coeffs: Tensor,
-        radial_powers: Tensor,
-        size: int,
-        num_phase_terms: int,
-        num_amp_terms: int,
-    ) -> None:
-        self.rho_pixels = rho_pixels
-        self.angular_parts = angular_parts
-        self.radial_coeffs = radial_coeffs
-        self.radial_powers = radial_powers
-        self.size = size
-        self.num_phase_terms = num_phase_terms
-        self.num_amp_terms = num_amp_terms
-
-    def to(self, device: torch.device | str) -> "PupilBasis":
-        return PupilBasis(
-            rho_pixels=self.rho_pixels.to(device),
-            angular_parts=self.angular_parts.to(device),
-            radial_coeffs=self.radial_coeffs.to(device),
-            radial_powers=self.radial_powers.to(device),
-            size=self.size,
-            num_phase_terms=self.num_phase_terms,
-            num_amp_terms=self.num_amp_terms,
-        )
-
-
-class Pupil(NamedTuple):
-    phase_coeffs: Tensor
-    amp_coeffs: Tensor
-    basis: PupilBasis
-    radius_fraction: Tensor
-
-
-def _as_basis_tensor(value: Tensor | float, basis: PupilBasis) -> Tensor:
-    if isinstance(value, Tensor):
-        return value
-    return torch.tensor(
-        value, device=basis.rho_pixels.device, dtype=basis.rho_pixels.dtype
-    )
 
 
 def _noll_to_nm(j: int) -> tuple[int, int]:
@@ -93,30 +38,26 @@ def _radial_terms(n: int, m_abs: int) -> tuple[list[float], list[int]]:
     return coeffs, powers
 
 
-def _polar_grid(
-    size: int,
-    device: torch.device | str = "cpu",
-    dtype: torch.dtype = torch.float32,
-) -> tuple[Tensor, Tensor]:
-    coords = torch.arange(size, device=device, dtype=dtype)
-    coords = torch.where(coords >= size / 2, coords - size, coords)
+def _basis_tensors(
+    object_grid_size: int,
+    num_phase_terms: int,
+    num_amp_terms: int,
+    *,
+    device: torch.device | str,
+    dtype: torch.dtype,
+) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+    coords = torch.arange(object_grid_size, device=device, dtype=dtype)
+    coords = torch.where(
+        coords >= object_grid_size / 2, coords - object_grid_size, coords
+    )
     grid_y, grid_x = torch.meshgrid(coords, coords, indexing="ij")
-    return torch.sqrt(grid_x**2 + grid_y**2), torch.atan2(grid_y, grid_x)
+    rho_pixels = torch.sqrt(grid_x**2 + grid_y**2)
+    theta = torch.atan2(grid_y, grid_x)
 
-
-def make_basis(
-    size: int,
-    num_phase_terms: int = 21,
-    num_amp_terms: int = 11,
-    device: torch.device | str = "cpu",
-    dtype: torch.dtype = torch.float32,
-) -> PupilBasis:
-    rho_pixels, theta = _polar_grid(size, device=device, dtype=dtype)
     max_terms = max(num_phase_terms, num_amp_terms)
     angular_parts: list[Tensor] = []
     radial_coeffs: list[list[float]] = []
     radial_powers: list[list[int]] = []
-
     for j in range(1, max_terms + 1):
         n, m = _noll_to_nm(j)
         if m > 0:
@@ -141,40 +82,85 @@ def make_basis(
             powers, device=device, dtype=dtype
         )
 
-    return PupilBasis(
-        rho_pixels=rho_pixels,
-        angular_parts=torch.stack(angular_parts),
-        radial_coeffs=coeff_tensor,
-        radial_powers=power_tensor,
-        size=size,
-        num_phase_terms=num_phase_terms,
-        num_amp_terms=num_amp_terms,
+    return rho_pixels, torch.stack(angular_parts), coeff_tensor, power_tensor
+
+
+def _default_phase_coeffs(
+    num_terms: int,
+    *,
+    device: torch.device | str,
+    dtype: torch.dtype,
+) -> Tensor:
+    return torch.zeros(num_terms, device=device, dtype=dtype)
+
+
+def _default_amp_coeffs(
+    num_terms: int,
+    *,
+    device: torch.device | str,
+    dtype: torch.dtype,
+) -> Tensor:
+    coeffs = torch.zeros(num_terms, device=device, dtype=dtype)
+    coeffs[0] = 1.0
+    return coeffs
+
+
+def _as_tensor(
+    value: Tensor | float,
+    *,
+    device: torch.device | str,
+    dtype: torch.dtype,
+) -> Tensor:
+    if isinstance(value, Tensor):
+        return value.detach().clone().to(device=device, dtype=dtype)
+    return torch.tensor(value, device=device, dtype=dtype)
+
+
+def _tile_params(value: Tensor, num_tiles: int | None) -> Tensor:
+    if num_tiles is None:
+        return value
+    if value.ndim == 0:
+        return value.reshape(1).repeat(num_tiles)
+    if value.ndim == 1:
+        return value.reshape(1, -1).repeat(num_tiles, 1)
+    if value.shape[0] == num_tiles:
+        return value
+    raise ValueError(f"Expected first dimension {num_tiles}, got {tuple(value.shape)}")
+
+
+def _tile_radius(value: Tensor, num_tiles: int | None) -> Tensor:
+    if num_tiles is None:
+        return value
+    if value.ndim == 0:
+        return value.reshape(1).repeat(num_tiles)
+    if value.ndim == 1 and value.shape[0] == num_tiles:
+        return value
+    if value.ndim == 1 and value.shape[0] == 1:
+        return value.repeat(num_tiles)
+    raise ValueError(
+        f"Expected radius shape () or ({num_tiles},), got {tuple(value.shape)}"
     )
 
 
-def _evaluate_pupil(
-    phase_coeffs: Float[Tensor, "num_phase"],
-    amp_coeffs: Float[Tensor, "num_amp"],
-    basis: PupilBasis,
-    radius_fraction: Tensor | float,
-    use_softplus: bool,
-) -> Complex[Tensor, "N N"]:
-    radius_fraction = _as_basis_tensor(radius_fraction, basis)
-    rho_norm = basis.rho_pixels / (radius_fraction * basis.size)
-    rho = torch.clamp(rho_norm, max=1.0)
+def _radius_bounds(radius_fraction: Tensor, margin: float = 0.2) -> tuple[float, float]:
+    radius = radius_fraction.detach().flatten().cpu()
+    if torch.any(radius <= 0):
+        raise ValueError(f"radius_fraction must be positive; got {radius.tolist()}")
+    return (1.0 - margin) * float(radius.min()), (1.0 + margin) * float(radius.max())
 
-    num_phase = len(phase_coeffs)
-    num_amp = len(amp_coeffs)
-    max_terms = max(num_phase, num_amp)
-    rho_powers = rho[None, None] ** basis.radial_powers[:max_terms, :, None, None]
-    radial = (basis.radial_coeffs[:max_terms, :, None, None] * rho_powers).sum(dim=1)
-    terms = radial * basis.angular_parts[:max_terms]
 
-    phase = torch.einsum("i,ihw->hw", phase_coeffs, terms[:num_phase])
-    amp_raw = torch.einsum("i,ihw->hw", amp_coeffs, terms[:num_amp])
-    amplitude = F.softplus(amp_raw) if use_softplus else amp_raw
+def _raw_bounded_radius(
+    radius_fraction: Tensor,
+    min_value: float,
+    max_value: float,
+) -> Tensor:
+    frac = (radius_fraction - min_value) / (max_value - min_value)
+    frac = torch.clamp(frac, 1e-6, 1.0 - 1e-6)
+    return torch.log(frac / (1.0 - frac))
 
-    return amplitude * torch.exp(1j * phase)
+
+def bounded_radius(raw_radius: Tensor, min_value: float, max_value: float) -> Tensor:
+    return min_value + (max_value - min_value) * torch.sigmoid(raw_radius)
 
 
 def init_raw_bounded_radius(
@@ -189,106 +175,192 @@ def init_raw_bounded_radius(
             "value must be between min_value and max_value; "
             f"got value={value}, min={min_value}, max={max_value}"
         )
-
-    frac = (value - min_value) / (max_value - min_value)
-    frac = min(max(frac, 1e-6), 1.0 - 1e-6)
-    raw = math.log(frac / (1.0 - frac))
-    tensor = torch.tensor(raw, device=device, dtype=torch.float32)
-    return tensor.requires_grad_(True) if requires_grad else tensor
+    raw = _raw_bounded_radius(torch.tensor(value, device=device), min_value, max_value)
+    return raw.requires_grad_(True) if requires_grad else raw
 
 
-def bounded_radius(raw_radius: Tensor, min_value: float, max_value: float) -> Tensor:
-    return min_value + (max_value - min_value) * torch.sigmoid(raw_radius)
-
-
-def make_aperture(
-    basis: PupilBasis,
-    radius_fraction: Tensor | float,
-    edge_width_px: Tensor | float = 2.0,
-) -> Float[Tensor, "N N"]:
-    radius_fraction = _as_basis_tensor(radius_fraction, basis)
-    edge_width_px = _as_basis_tensor(edge_width_px, basis)
-    return torch.sigmoid(
-        (radius_fraction * basis.size - basis.rho_pixels) / edge_width_px
-    )
-
-
-def make_pupil(
+def _evaluate(
     phase_coeffs: Float[Tensor, "num_phase"],
     amp_coeffs: Float[Tensor, "num_amp"],
-    basis: PupilBasis,
-    radius_fraction: Tensor | float,
-    edge_width_px: Tensor | float = 2.0,
-    use_softplus: bool = True,
-) -> Complex[Tensor, "N N"]:
-    pupil = _evaluate_pupil(
-        phase_coeffs,
-        amp_coeffs,
-        basis,
-        radius_fraction,
-        use_softplus=use_softplus,
-    )
-    aperture = make_aperture(basis, radius_fraction, edge_width_px)
-    return pupil * aperture.to(pupil.real.dtype)
-
-
-def init_phase_coeffs(
-    num_terms: int = 21,
-    device: torch.device | str = "cpu",
-    requires_grad: bool = True,
-) -> Tensor:
-    coeffs = torch.zeros(num_terms, device=device)
-    return coeffs.requires_grad_(True) if requires_grad else coeffs
-
-
-def init_amp_coeffs(
-    num_terms: int = 11,
-    device: torch.device | str = "cpu",
-    requires_grad: bool = True,
-) -> Tensor:
-    coeffs = torch.zeros(num_terms, device=device)
-    coeffs[0] = 1.0
-    return coeffs.requires_grad_(True) if requires_grad else coeffs
-
-
-def init_radius(
-    value: float = 0.2,
-    device: torch.device | str = "cpu",
-    requires_grad: bool = True,
-) -> Tensor:
-    radius = torch.tensor(value, device=device)
-    return radius.requires_grad_(True) if requires_grad else radius
-
-
-def make_ideal_pupil(
+    radius_fraction: Tensor,
+    rho_pixels: Tensor,
+    angular_parts: Tensor,
+    radial_coeffs: Tensor,
+    radial_powers: Tensor,
     object_grid_size: int,
+    use_softplus: bool,
+) -> Complex[Tensor, "N N"]:
+    rho_norm = rho_pixels / (radius_fraction * object_grid_size)
+    rho = torch.clamp(rho_norm, max=1.0)
+
+    num_phase = len(phase_coeffs)
+    num_amp = len(amp_coeffs)
+    max_terms = max(num_phase, num_amp)
+    rho_powers = rho[None, None] ** radial_powers[:max_terms, :, None, None]
+    radial = (radial_coeffs[:max_terms, :, None, None] * rho_powers).sum(dim=1)
+    terms = radial * angular_parts[:max_terms]
+
+    phase = torch.einsum("i,ihw->hw", phase_coeffs, terms[:num_phase])
+    amp_raw = torch.einsum("i,ihw->hw", amp_coeffs, terms[:num_amp])
+    amplitude = F.softplus(amp_raw) if use_softplus else amp_raw
+    return amplitude * torch.exp(1j * phase)
+
+
+def _aperture(
+    radius_fraction: Tensor,
+    rho_pixels: Tensor,
+    object_grid_size: int,
+    edge_width_px: Tensor | float,
+) -> Tensor:
+    if not isinstance(edge_width_px, Tensor):
+        edge_width_px = torch.tensor(
+            edge_width_px,
+            device=rho_pixels.device,
+            dtype=rho_pixels.dtype,
+        )
+    return torch.sigmoid(
+        (radius_fraction * object_grid_size - rho_pixels) / edge_width_px
+    )
+
+
+class Pupil(nn.Module):
+    def __init__(
+        self,
+        object_grid_size: int,
+        num_phase_terms: int = 21,
+        num_amp_terms: int = 11,
+        *,
+        phase_coeffs: Tensor | None = None,
+        amp_coeffs: Tensor | None = None,
+        radius_fraction: Tensor | float = 0.2,
+        num_tiles: int | None = None,
+        edge_width_px: float = 2.0,
+        use_softplus: bool = True,
+        radius_bounds: tuple[float, float] | None = None,
+        device: torch.device | str | None = None,
+        dtype: torch.dtype = torch.float32,
+    ) -> None:
+        super().__init__()
+        target_device = device or (
+            phase_coeffs.device if isinstance(phase_coeffs, Tensor) else "cpu"
+        )
+        self.object_grid_size = object_grid_size
+        self.num_phase_terms = num_phase_terms
+        self.num_amp_terms = num_amp_terms
+        self.edge_width_px = edge_width_px
+        self.use_softplus = use_softplus
+
+        rho_pixels, angular_parts, radial_coeffs, radial_powers = _basis_tensors(
+            object_grid_size,
+            num_phase_terms,
+            num_amp_terms,
+            device=target_device,
+            dtype=dtype,
+        )
+        self.register_buffer("rho_pixels", rho_pixels)
+        self.register_buffer("angular_parts", angular_parts)
+        self.register_buffer("radial_coeffs", radial_coeffs)
+        self.register_buffer("radial_powers", radial_powers)
+
+        phase = (
+            _default_phase_coeffs(num_phase_terms, device=target_device, dtype=dtype)
+            if phase_coeffs is None
+            else phase_coeffs.detach().clone().to(device=target_device, dtype=dtype)
+        )
+        amp = (
+            _default_amp_coeffs(num_amp_terms, device=target_device, dtype=dtype)
+            if amp_coeffs is None
+            else amp_coeffs.detach().clone().to(device=target_device, dtype=dtype)
+        )
+        radius = _as_tensor(radius_fraction, device=target_device, dtype=dtype)
+        phase = _tile_params(phase, num_tiles)
+        amp = _tile_params(amp, num_tiles)
+        radius = _tile_radius(radius, num_tiles)
+
+        self.phase_coeffs = nn.Parameter(phase)
+        self.amp_coeffs = nn.Parameter(amp)
+        self.min_radius, self.max_radius = radius_bounds or _radius_bounds(radius)
+        self.raw_radius = nn.Parameter(
+            _raw_bounded_radius(radius, self.min_radius, self.max_radius)
+        )
+
+    @property
+    def radius_fraction(self) -> Tensor:
+        return bounded_radius(self.raw_radius, self.min_radius, self.max_radius)
+
+    def tile(self, tile_idx: int) -> "Pupil":
+        if self.phase_coeffs.ndim == 1:
+            phase = self.phase_coeffs
+            amp = self.amp_coeffs
+            radius = self.radius_fraction
+        else:
+            phase = self.phase_coeffs[tile_idx]
+            amp = self.amp_coeffs[tile_idx]
+            radius = self.radius_fraction[tile_idx]
+        return Pupil(
+            self.object_grid_size,
+            num_phase_terms=self.num_phase_terms,
+            num_amp_terms=self.num_amp_terms,
+            phase_coeffs=phase.detach(),
+            amp_coeffs=amp.detach(),
+            radius_fraction=radius.detach(),
+            edge_width_px=self.edge_width_px,
+            use_softplus=self.use_softplus,
+            device=phase.device,
+            dtype=phase.dtype,
+        )
+
+    def forward(self) -> Complex[Tensor, "N N"] | Complex[Tensor, "T N N"]:
+        if self.phase_coeffs.ndim == 1:
+            return self._forward_one(
+                self.phase_coeffs,
+                self.amp_coeffs,
+                self.radius_fraction,
+            )
+        return torch.stack(
+            [
+                self._forward_one(
+                    self.phase_coeffs[tile_idx],
+                    self.amp_coeffs[tile_idx],
+                    self.radius_fraction[tile_idx],
+                )
+                for tile_idx in range(self.phase_coeffs.shape[0])
+            ]
+        )
+
+    def _forward_one(
+        self,
+        phase_coeffs: Tensor,
+        amp_coeffs: Tensor,
+        radius_fraction: Tensor,
+    ) -> Tensor:
+        rho_pixels = cast(Tensor, self.rho_pixels)
+        pupil = _evaluate(
+            phase_coeffs,
+            amp_coeffs,
+            radius_fraction,
+            rho_pixels,
+            cast(Tensor, self.angular_parts),
+            cast(Tensor, self.radial_coeffs),
+            cast(Tensor, self.radial_powers),
+            self.object_grid_size,
+            self.use_softplus,
+        )
+        aperture = _aperture(
+            radius_fraction,
+            rho_pixels,
+            self.object_grid_size,
+            self.edge_width_px,
+        )
+        return pupil * aperture.to(pupil.real.dtype)
+
+
+def radius_fraction_from_optics(
     numerical_aperture: float,
     wavelength_m: float,
     sensor_pixel_size_m: float,
     magnification: float,
     object_to_capture_ratio: int,
-    num_phase_terms: int = 1,
-    num_amp_terms: int = 1,
-    device: torch.device | str | None = None,
-) -> Pupil:
+) -> float:
     dx_obj = sensor_pixel_size_m / (magnification * object_to_capture_ratio)
-    radius_fraction = (numerical_aperture / wavelength_m) * dx_obj
-    target_device = device or "cpu"
-
-    return Pupil(
-        phase_coeffs=init_phase_coeffs(
-            num_phase_terms, device=target_device, requires_grad=False
-        ),
-        amp_coeffs=init_amp_coeffs(
-            num_amp_terms, device=target_device, requires_grad=False
-        ),
-        basis=make_basis(
-            object_grid_size,
-            num_phase_terms=num_phase_terms,
-            num_amp_terms=num_amp_terms,
-            device=target_device,
-        ),
-        radius_fraction=init_radius(
-            radius_fraction, device=target_device, requires_grad=False
-        ),
-    )
+    return (numerical_aperture / wavelength_m) * dx_obj

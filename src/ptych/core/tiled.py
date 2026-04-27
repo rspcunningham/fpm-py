@@ -10,11 +10,7 @@ from ptych.core.metrics import (
     BatchMetricsRecord,
     TileCompleteCallback,
 )
-from ptych.core.pupil import (
-    Pupil,
-    make_basis,
-    make_pupil,
-)
+from ptych.core.pupil import Pupil
 
 
 @dataclass(frozen=True)
@@ -73,7 +69,6 @@ def solve_tiled_from_inputs(
     object_to_capture_ratio: int = 4,
     epochs: int = 1000,
     torch_device: str | torch.device = "cpu",
-    learn_pupil: bool = True,
     learn_k_vectors: bool = False,
     checkpoint_interval: int = 50,
     on_tile_complete: TileCompleteCallback | None = None,
@@ -99,7 +94,6 @@ def solve_tiled_from_inputs(
         on_tile_complete: Callback(y_start, x_start, object, pupil, metrics) after each tile.
         on_batch_complete: Callback(batch_tiles, pupils, metrics) after each batch solve.
         tile_batch_size: Number of tiles to solve simultaneously.
-        learn_pupil: Whether to optimize pupil coefficients.
         learn_k_vectors: Whether to optimize illumination k-vectors.
         checkpoint_interval: Epoch spacing for checkpoint accumulation.
 
@@ -117,11 +111,6 @@ def solve_tiled_from_inputs(
     x_plans = _axis_tile_plans(W, tile_size)
 
     upsampled_size = tile_size * object_to_capture_ratio
-    basis = make_basis(
-        upsampled_size,
-        num_phase_terms=pupil.basis.num_phase_terms,
-        num_amp_terms=pupil.basis.num_amp_terms,
-    )
 
     # 6. Allocate output
     out_H = H * object_to_capture_ratio
@@ -165,10 +154,14 @@ def solve_tiled_from_inputs(
         batch_objects_tensor = torch.stack(batch_objects)  # [T, N, N]
 
         tile_pupil = Pupil(
-            pupil.phase_coeffs.clone().detach(),
-            pupil.amp_coeffs.clone().detach(),
-            basis,
-            pupil.radius_fraction.clone().detach(),
+            upsampled_size,
+            num_phase_terms=pupil.num_phase_terms,
+            num_amp_terms=pupil.num_amp_terms,
+            phase_coeffs=pupil.phase_coeffs,
+            amp_coeffs=pupil.amp_coeffs,
+            radius_fraction=pupil.radius_fraction,
+            edge_width_px=pupil.edge_width_px,
+            use_softplus=pupil.use_softplus,
         )
 
         # d. Solve batch
@@ -179,7 +172,6 @@ def solve_tiled_from_inputs(
             kx,
             ky,
             epochs=epochs,
-            learn_pupil=learn_pupil,
             learn_k_vectors=learn_k_vectors,
             torch_device=torch_device,
             checkpoint_interval=checkpoint_interval,
@@ -206,12 +198,7 @@ def solve_tiled_from_inputs(
         # e. Record tile pupils and callbacks
         for i, tile in enumerate(batch):
             solved_pupil = solved_pupils[i]
-            solved_pupil_tensor = make_pupil(
-                solved_pupil.phase_coeffs,
-                solved_pupil.amp_coeffs,
-                solved_pupil.basis,
-                solved_pupil.radius_fraction,
-            ).cpu()
+            solved_pupil_tensor = solved_pupil().cpu()
             tile_pupils[(tile.y.start, tile.x.start)] = solved_pupil_tensor
 
             if on_tile_complete is not None:
@@ -259,7 +246,6 @@ def solve_tiled(
     object_to_capture_ratio: int = 4,
     epochs: int = 1000,
     torch_device: str | torch.device = "cpu",
-    learn_pupil: bool = True,
     learn_k_vectors: bool = False,
     checkpoint_interval: int = 50,
     on_tile_complete: TileCompleteCallback | None = None,
@@ -276,7 +262,6 @@ def solve_tiled(
         object_to_capture_ratio=object_to_capture_ratio,
         epochs=epochs,
         torch_device=torch_device,
-        learn_pupil=learn_pupil,
         learn_k_vectors=learn_k_vectors,
         checkpoint_interval=checkpoint_interval,
         on_tile_complete=on_tile_complete,

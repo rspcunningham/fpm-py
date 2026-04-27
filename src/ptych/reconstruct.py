@@ -13,7 +13,7 @@ from ptych.core.metrics import (
 from ptych.core.pupil import Pupil
 from ptych.core.tiled import solve_tiled_from_inputs
 from ptych.data.study import PtychStudy
-from ptych.data.types import Capture
+from ptych.data.types import Capture, is_illuminated_capture
 
 
 # A capture range is a tuple of (start,) or (start, stop) defining a half-open range.
@@ -83,7 +83,9 @@ class CaptureRegion:
 
 def _valid_study_captures(study: PtychStudy) -> list[Capture]:
     valid_captures = [
-        capture for capture in study.manifest.captures if capture.led_positions
+        capture
+        for capture in study.manifest.captures
+        if is_illuminated_capture(capture)
     ]
     if len(valid_captures) != study.captures.shape[0]:
         raise ValueError(
@@ -148,7 +150,6 @@ def solve_study(
     object_to_capture_ratio: int = 4,
     epochs: int = 1000,
     torch_device: str | torch.device = "cpu",
-    learn_pupil: bool = True,
     learn_k_vectors: bool = False,
     checkpoint_interval: int = 50,
     on_tile_complete: TileCompleteCallback | None = None,
@@ -170,7 +171,6 @@ def solve_study(
             object_to_capture_ratio=object_to_capture_ratio,
             epochs=epochs,
             torch_device=torch_device,
-            learn_pupil=learn_pupil,
             learn_k_vectors=learn_k_vectors,
             checkpoint_interval=checkpoint_interval,
             on_tile_complete=on_tile_complete,

@@ -5,31 +5,7 @@ from jaxtyping import Float, Complex
 
 from ptych.core.forward import forward_model
 from ptych.core.metrics import InverseMetrics
-from ptych.core.pupil import (
-    Pupil,
-    PupilBasis,
-    bounded_radius,
-    init_raw_bounded_radius,
-    make_pupil,
-)
-
-
-def _repeat_initial_pupil(
-    pupil: Pupil,
-    num_tiles: int,
-    device: torch.device | str,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, PupilBasis]:
-    phase_coeffs = (
-        pupil.phase_coeffs.clone().detach().to(device).unsqueeze(0).repeat(num_tiles, 1)
-    )
-    amp_coeffs = (
-        pupil.amp_coeffs.clone().detach().to(device).unsqueeze(0).repeat(num_tiles, 1)
-    )
-    radius_fraction = (
-        pupil.radius_fraction.clone().detach().to(device).reshape(1).repeat(num_tiles)
-    )
-    basis = pupil.basis.to(device)
-    return phase_coeffs, amp_coeffs, radius_fraction, basis
+from ptych.core.pupil import Pupil
 
 
 def _radius_limits(radius_fraction: torch.Tensor) -> tuple[float, float]:
@@ -51,7 +27,6 @@ def solve_inverse(
         torch.Tensor, "B"
     ],  # [B] float on (-0.5, 0.5) (normalized for an n * n grid!)
     epochs: int = 1000,
-    learn_pupil: bool = True,
     learn_k_vectors: bool = False,
     torch_device: str | torch.device = "cpu",
     checkpoint_interval: int = 50,
@@ -77,7 +52,7 @@ def solve_inverse(
     kx_batch = kx_batch / object_to_capture_ratio
     ky_batch = ky_batch / object_to_capture_ratio
 
-    learned_tensors: list[dict[str, torch.Tensor | float]] = []
+    learned_tensors = []
     object_amp = torch.abs(object).clone().detach().requires_grad_(True)  # [T, N, N]
     object_phase = (
         torch.angle(object).clone().detach().requires_grad_(True)
@@ -88,36 +63,23 @@ def solve_inverse(
     # intensity_scale = torch.ones(B, device=torch_device).requires_grad_(True)  # [B]
     # learned_tensors.append({'params': intensity_scale, 'lr': 1e-2})
 
-    # Repeat the initial pupil parameters so each tile has an independent pupil.
-    phase_coeffs, amp_coeffs, initial_radius_fraction, basis = _repeat_initial_pupil(
-        pupil,
-        T,
-        torch_device,
-    )
     min_radius, max_radius = _radius_limits(
         pupil.radius_fraction,
     )
-    raw_radius: torch.Tensor | None = None
-
-    if learn_pupil:
-        phase_coeffs = phase_coeffs.requires_grad_(True)
-        amp_coeffs = amp_coeffs.requires_grad_(True)
-        raw_radius = (
-            init_raw_bounded_radius(
-                value=float(pupil.radius_fraction.detach().cpu()),
-                min_value=min_radius,
-                max_value=max_radius,
-                device=torch_device,
-                requires_grad=False,
-            )
-            .reshape(1)
-            .repeat(T)
-            .detach()
-            .requires_grad_(True)
-        )
-        learned_tensors.append({"params": phase_coeffs, "lr": 1e-3})
-        learned_tensors.append({"params": amp_coeffs, "lr": 1e-3})
-        learned_tensors.append({"params": raw_radius, "lr": 1e-3})
+    pupil_model = Pupil(
+        object.shape[1],
+        num_phase_terms=pupil.num_phase_terms,
+        num_amp_terms=pupil.num_amp_terms,
+        phase_coeffs=pupil.phase_coeffs,
+        amp_coeffs=pupil.amp_coeffs,
+        radius_fraction=pupil.radius_fraction,
+        num_tiles=T,
+        edge_width_px=pupil.edge_width_px,
+        use_softplus=pupil.use_softplus,
+        radius_bounds=(min_radius, max_radius),
+        device=torch_device,
+    )
+    learned_tensors.append({"params": list(pupil_model.parameters()), "lr": 1e-3})
 
     if learn_k_vectors:
         kx_batch = kx_batch.clone().detach().requires_grad_(True)
@@ -142,28 +104,7 @@ def solve_inverse(
 
     # Training loop
     for epoch in tqdm(range(epochs), desc="Solving inverse model..."):
-        radius_fraction = (
-            bounded_radius(
-                raw_radius,
-                min_value=min_radius,
-                max_value=max_radius,
-            )
-            if raw_radius is not None
-            else initial_radius_fraction
-        )
-        pupil_tensor = torch.stack(
-            [
-                make_pupil(
-                    phase_coeffs[tile_idx],
-                    amp_coeffs[tile_idx],
-                    basis,
-                    radius_fraction[tile_idx],
-                    edge_width_px=2.0,
-                    use_softplus=True,
-                )
-                for tile_idx in range(T)
-            ]
-        )
+        pupil_tensor = pupil_model()
 
         # Reconstruct complex object from amplitude and phase
         object_complex = object_amp * torch.exp(1j * object_phase)  # [T, N, N]
@@ -220,26 +161,8 @@ def solve_inverse(
         )
         history_epochs.append(last_epoch)
 
-    final_radius_fraction = (
-        bounded_radius(
-            raw_radius,
-            min_value=min_radius,
-            max_value=max_radius,
-        ).detach()
-        if raw_radius is not None
-        else initial_radius_fraction.detach()
-    )
-
     return (
-        [
-            Pupil(
-                phase_coeffs[tile_idx].detach(),
-                amp_coeffs[tile_idx].detach(),
-                basis,
-                final_radius_fraction[tile_idx],
-            )
-            for tile_idx in range(T)
-        ],
+        [pupil_model.tile(tile_idx) for tile_idx in range(T)],
         metrics,
         history_frames,
         history_epochs,
