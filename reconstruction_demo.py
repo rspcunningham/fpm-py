@@ -4,7 +4,6 @@ from preview_utils import save_metrics_summary, save_tensor
 from ptych import CaptureRegion, PtychStudy, solve_study
 from ptych.core.pupil import radius_fraction_from_optics
 from ptych.data.types import is_illuminated_capture
-from ptych.preview import render_scalar_preview_png
 
 dataset = "usaf-test-dark"
 
@@ -75,18 +74,6 @@ save_tensor(reconstruction, OUTPUT_DIR / "reconstruction.npy")
 save_tensor(result.raw_object_amplitude, OUTPUT_DIR / "raw_object_amplitude.npy")
 save_tensor(result.raw_object_phase, OUTPUT_DIR / "raw_object_phase.npy")
 
-render_scalar_preview_png(
-    reconstruction,
-    path=OUTPUT_DIR / "reconstruction.png",
-)
-render_scalar_preview_png(
-    result.raw_object_amplitude,
-    path=OUTPUT_DIR / "raw_object_amplitude.png",
-)
-render_scalar_preview_png(
-    result.raw_object_phase,
-    path=OUTPUT_DIR / "raw_object_phase.png",
-)
 print(f"Reconstruction tensor: {result.reconstruction.shape}")
 print(f"Raw object amplitude tensor: {result.raw_object_amplitude.shape}")
 print(f"Raw object phase tensor: {result.raw_object_phase.shape}")
