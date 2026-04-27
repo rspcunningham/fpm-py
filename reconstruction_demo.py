@@ -10,8 +10,8 @@ dataset = "usaf-test-dark"
 study = PtychStudy.load(dataset)
 
 # Reconstruction geometry settings
-TILE_SIZE = 512
-CROP_SIZE = 512
+TILE_SIZE = 128
+CROP_SIZE = 128
 CAPTURE_SELECTION = None
 
 OBJECT_TO_CAPTURE_RATIO = 4
@@ -24,7 +24,7 @@ NUM_AMP_TERMS = 10
 # Optimization and runtime settings
 TORCH_DEVICE = "mps"  # Switch to "cpu" or "cuda".
 TILE_BATCH_SIZE = 16
-EPOCHS = 2000
+EPOCHS = 500
 
 # Output directory
 OUTPUT_DIR = Path(f"results/{dataset}")
