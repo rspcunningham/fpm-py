@@ -9,3 +9,11 @@ To reduce optimization dimensionality, the pupil is parameterized in a Zernike b
 We then use AdamW to fit the latent scene so its predicted captures match the measured ones, and read out the high-resolution reconstruction as the intensity of the learned object.
 
 ![Forward model block diagram](docs/block-diagram.png)
+
+Forward model:
+
+$$I_j(\mathbf{r}) = \left|\, \mathcal{F}^{-1}\!\left\{ P(\mathbf{k}) \cdot \mathcal{F}\!\left\{ O(\mathbf{r})\, e^{i 2\pi \mathbf{k}_j \cdot \mathbf{r}} \right\} \right\} \right|^2$$
+
+Optimization objective:
+
+$$\mathcal{L} = \sum_j \left\| \sqrt{I_j^{\text{pred}} + \epsilon} - \sqrt{I_j^{\text{meas}} + \epsilon} \right\|_2^2$$

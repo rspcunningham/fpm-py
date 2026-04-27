@@ -21,29 +21,6 @@ class StudySolveResult:
 
 
 @dataclass(frozen=True)
-class CaptureRegion:
-    x_left: int
-    x_right: int
-    y_top: int
-    y_bottom: int
-
-    @classmethod
-    def centered_square(cls, *, width: int, height: int, size: int) -> CaptureRegion:
-        if size > width or size > height:
-            raise ValueError(
-                f"Centered square size ({size}) exceeds capture dimensions ({height}x{width})"
-            )
-        x_left = (width - size) // 2
-        y_top = (height - size) // 2
-        return cls(
-            x_left=x_left,
-            x_right=x_left + size,
-            y_top=y_top,
-            y_bottom=y_top + size,
-        )
-
-
-@dataclass(frozen=True)
 class _AxisPatch:
     start: int
     output_start: int
@@ -224,7 +201,6 @@ def _train_batch(
 def solve_study(
     study: PtychStudy,
     *,
-    capture_region: CaptureRegion,
     patch_size: int,
     pupil_radius_fraction: Tensor | float,
     object_to_capture_ratio: int = 4,
@@ -234,11 +210,7 @@ def solve_study(
     device: str | torch.device = "cpu",
     batch_size: int = 1,
 ) -> StudySolveResult:
-    captures = study.captures[
-        :,
-        capture_region.y_top : capture_region.y_bottom,
-        capture_region.x_left : capture_region.x_right,
-    ]
+    captures = study.captures
     kx = study.kx_batch
     ky = study.ky_batch
 

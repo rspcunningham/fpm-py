@@ -2,15 +2,12 @@ from pathlib import Path
 
 import numpy as np
 
-from ptych import CaptureRegion, PtychStudy, solve_study
+from ptych import PtychStudy, solve_study
 from ptych.core.metric_plots import save_metrics_summary
 from ptych.core.pupil import radius_fraction_from_optics
 from ptych.data.types import is_illuminated_capture
 
 dataset = "usaf-test-dark"
-
-# Load dataset from nextcloud storage
-study = PtychStudy.load(dataset)
 
 # Reconstruction geometry settings
 PATCH_SIZE = 256
@@ -32,6 +29,9 @@ EPOCHS = 200
 OUTPUT_DIR = Path(f"results/{dataset}")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
+# Load only the reconstruction crop from the cached dataset.
+study = PtychStudy.load(dataset, crop_size=CROP_SIZE)
+
 # Prepare the initial pupil guess.
 study_wavelength = next(
     capture for capture in study.manifest.captures if is_illuminated_capture(capture)
@@ -45,16 +45,9 @@ pupil_radius_fraction = radius_fraction_from_optics(
     object_to_capture_ratio=OBJECT_TO_CAPTURE_RATIO,
 )
 
-capture_region = CaptureRegion.centered_square(
-    width=study.captures.shape[2],
-    height=study.captures.shape[1],
-    size=CROP_SIZE,
-)
-
 # Run reconstruction.
 result = solve_study(
     study,
-    capture_region=capture_region,
     patch_size=PATCH_SIZE,
     object_to_capture_ratio=OBJECT_TO_CAPTURE_RATIO,
     pupil_radius_fraction=pupil_radius_fraction,
