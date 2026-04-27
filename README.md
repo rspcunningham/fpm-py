@@ -36,4 +36,4 @@ Optimization objective:
 \right\rVert_2^2
 ```
 
-![Block diagram](docs/block-diagram-zernike.png)
+![Block diagram](docs/block-diagram-clean.png)
