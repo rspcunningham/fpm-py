@@ -22,11 +22,18 @@ DEFAULT_CACHE_DIR = Path.home() / ".cache" / "ptych" / "datasets"
 DEFAULT_DOWNLOAD_MAX_ATTEMPTS = 3
 DEFAULT_DOWNLOAD_RETRY_DELAY_SECONDS = 5
 
-TRANSIENT_DOWNLOAD_ERRORS = (ConnectionResetError, ConnectionError, TimeoutError, OSError)
+TRANSIENT_DOWNLOAD_ERRORS = (
+    ConnectionResetError,
+    ConnectionError,
+    TimeoutError,
+    OSError,
+)
 DEFAULT_NEXTCLOUD_BASE_URL = "https://dqe.asuscomm.com"
 DEFAULT_NEXTCLOUD_SHARE_ID = "SLbNBTqK9firqZM"
 
-type JsonValue = None | bool | int | float | str | list[JsonValue] | dict[str, JsonValue]
+type JsonValue = (
+    None | bool | int | float | str | list[JsonValue] | dict[str, JsonValue]
+)
 type DatasetMetadata = dict[str, JsonValue]
 
 
@@ -43,7 +50,9 @@ class DatasetValidationError(NextcloudDatasetCacheError):
 
 
 class DatasetTransport(Protocol):
-    def download_dataset(self, dataset_id: str, destination_path: str | Path) -> Path: ...
+    def download_dataset(
+        self, dataset_id: str, destination_path: str | Path
+    ) -> Path: ...
 
 
 class NextcloudDatasetCache:
@@ -61,7 +70,9 @@ class NextcloudDatasetCache:
         share_id: str | None = None,
         transport: DatasetTransport | None = None,
     ) -> None:
-        self.cache_dir = Path(cache_dir).expanduser() if cache_dir else DEFAULT_CACHE_DIR
+        self.cache_dir = (
+            Path(cache_dir).expanduser() if cache_dir else DEFAULT_CACHE_DIR
+        )
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._locks_dir = self.cache_dir / ".locks"
         self._locks_dir.mkdir(parents=True, exist_ok=True)
@@ -131,7 +142,9 @@ class NextcloudDatasetCache:
                 shutil.rmtree(staging_dir, ignore_errors=True)
                 raise
             except Exception as exc:
-                if not isinstance(exc.__context__ or exc, TRANSIENT_DOWNLOAD_ERRORS) and not isinstance(exc, TRANSIENT_DOWNLOAD_ERRORS):
+                if not isinstance(
+                    exc.__context__ or exc, TRANSIENT_DOWNLOAD_ERRORS
+                ) and not isinstance(exc, TRANSIENT_DOWNLOAD_ERRORS):
                     raise NextcloudDatasetCacheError(
                         f"Failed to fetch dataset '{dataset_id}': {exc}"
                     ) from exc
@@ -139,7 +152,9 @@ class NextcloudDatasetCache:
                 last_exc = exc
                 if attempt < DEFAULT_DOWNLOAD_MAX_ATTEMPTS:
                     delay = DEFAULT_DOWNLOAD_RETRY_DELAY_SECONDS * attempt
-                    print(f"Download attempt {attempt} failed ({exc}), retrying in {delay}s...")
+                    print(
+                        f"Download attempt {attempt} failed ({exc}), retrying in {delay}s..."
+                    )
                     time.sleep(delay)
         else:
             if not data_path.exists() and backup_path.exists():
@@ -175,7 +190,9 @@ class NextcloudDatasetCache:
 
         return data_path
 
-    def _validate_extracted_dataset(self, dataset_root: Path, dataset_id: str) -> DatasetMetadata:
+    def _validate_extracted_dataset(
+        self, dataset_root: Path, dataset_id: str
+    ) -> DatasetMetadata:
         manifest_path = dataset_root / "info.json"
         if not manifest_path.is_file():
             raise DatasetValidationError(f"Dataset '{dataset_id}' is missing info.json")
@@ -268,7 +285,11 @@ class NextcloudDatasetCache:
         os.replace(tmp_path, metadata_path)
 
     def _resolve_base_url(self, base_url: str | None) -> str:
-        resolved = (base_url or os.environ.get("PTYCH_NEXTCLOUD_BASE_URL") or DEFAULT_NEXTCLOUD_BASE_URL).strip()
+        resolved = (
+            base_url
+            or os.environ.get("PTYCH_NEXTCLOUD_BASE_URL")
+            or DEFAULT_NEXTCLOUD_BASE_URL
+        ).strip()
         if not resolved:
             raise NextcloudDatasetCacheError(
                 "Nextcloud base URL is not configured. Set PTYCH_NEXTCLOUD_BASE_URL or edit DEFAULT_NEXTCLOUD_BASE_URL in dataset_cache.py."
@@ -276,7 +297,11 @@ class NextcloudDatasetCache:
         return resolved.rstrip("/")
 
     def _resolve_share_id(self, share_id: str | None) -> str:
-        resolved = (share_id or os.environ.get("PTYCH_NEXTCLOUD_SHARE_ID") or DEFAULT_NEXTCLOUD_SHARE_ID).strip()
+        resolved = (
+            share_id
+            or os.environ.get("PTYCH_NEXTCLOUD_SHARE_ID")
+            or DEFAULT_NEXTCLOUD_SHARE_ID
+        ).strip()
         if not resolved:
             raise NextcloudDatasetCacheError(
                 "Nextcloud share ID is not configured. Set PTYCH_NEXTCLOUD_SHARE_ID or edit DEFAULT_NEXTCLOUD_SHARE_ID in dataset_cache.py."
@@ -325,7 +350,9 @@ class NextcloudDatasetCache:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Fetch and cache datasets from a public Nextcloud share")
+    parser = argparse.ArgumentParser(
+        description="Fetch and cache datasets from a public Nextcloud share"
+    )
     parser.add_argument("dataset_id")
     parser.add_argument("--cache-dir", default=None)
     parser.add_argument("--base-url", default=None)

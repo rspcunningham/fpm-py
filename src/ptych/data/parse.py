@@ -1,4 +1,5 @@
 """Parsing and serialization utilities for study manifest data."""
+
 import json
 from datetime import datetime
 from pathlib import Path
@@ -26,7 +27,9 @@ def _require_str(data: dict[str, object], key: str, context: str = "") -> str:
         raise ManifestParseError(f"{prefix}Missing required key '{key}'")
     value = data[key]
     if not isinstance(value, str):
-        raise ManifestParseError(f"{prefix}Expected str for '{key}', got {type(value).__name__}")
+        raise ManifestParseError(
+            f"{prefix}Expected str for '{key}', got {type(value).__name__}"
+        )
     return value
 
 
@@ -36,7 +39,9 @@ def _require_num(data: dict[str, object], key: str, context: str = "") -> float:
         raise ManifestParseError(f"{prefix}Missing required key '{key}'")
     value = data[key]
     if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ManifestParseError(f"{prefix}Expected number for '{key}', got {type(value).__name__}")
+        raise ManifestParseError(
+            f"{prefix}Expected number for '{key}', got {type(value).__name__}"
+        )
     return float(value)
 
 
@@ -46,7 +51,9 @@ def _require_int(data: dict[str, object], key: str, context: str = "") -> int:
         raise ManifestParseError(f"{prefix}Missing required key '{key}'")
     value = data[key]
     if not isinstance(value, int) or isinstance(value, bool):
-        raise ManifestParseError(f"{prefix}Expected int for '{key}', got {type(value).__name__}")
+        raise ManifestParseError(
+            f"{prefix}Expected int for '{key}', got {type(value).__name__}"
+        )
     return value
 
 
@@ -56,13 +63,17 @@ def _require_list(data: dict[str, object], key: str, context: str = "") -> list[
         raise ManifestParseError(f"{prefix}Missing required key '{key}'")
     value = data[key]
     if not isinstance(value, list):
-        raise ManifestParseError(f"{prefix}Expected list for '{key}', got {type(value).__name__}")
+        raise ManifestParseError(
+            f"{prefix}Expected list for '{key}', got {type(value).__name__}"
+        )
     return cast(list[object], value)
 
 
 def _require_dict(value: object, context: str) -> dict[str, object]:
     if not isinstance(value, dict):
-        raise ManifestParseError(f"{context}: Expected dict, got {type(value).__name__}")
+        raise ManifestParseError(
+            f"{context}: Expected dict, got {type(value).__name__}"
+        )
     return cast(dict[str, object], value)
 
 
@@ -71,7 +82,9 @@ def _optional_str(data: dict[str, object], key: str) -> str | None:
     if value is None:
         return None
     if not isinstance(value, str):
-        raise ManifestParseError(f"Expected str for '{key}', got {type(value).__name__}")
+        raise ManifestParseError(
+            f"Expected str for '{key}', got {type(value).__name__}"
+        )
     return value
 
 
@@ -80,7 +93,9 @@ def _optional_num(data: dict[str, object], key: str) -> float | None:
     if value is None:
         return None
     if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ManifestParseError(f"Expected number for '{key}', got {type(value).__name__}")
+        raise ManifestParseError(
+            f"Expected number for '{key}', got {type(value).__name__}"
+        )
     return float(value)
 
 
@@ -150,39 +165,49 @@ def parse_manifest(data: dict[str, object]) -> StudyManifest:
         led_positions: list[LedPosition] = []
         for j, pos_raw in enumerate(led_raw):
             pos = _require_dict(pos_raw, f"captures[{i}].led_positions[{j}]")
-            led_positions.append(LedPosition(
-                x=_require_num(pos, "x"),
-                y=_require_num(pos, "y"),
-                z=_require_num(pos, "z"),
-            ))
+            led_positions.append(
+                LedPosition(
+                    x=_require_num(pos, "x"),
+                    y=_require_num(pos, "y"),
+                    z=_require_num(pos, "z"),
+                )
+            )
 
         captured_at_str = _optional_str(cap, "captured_at")
 
         filename = _require_str(cap, "filename", f"captures[{i}]")
-        captured_at = datetime.fromisoformat(captured_at_str) if captured_at_str else None
+        captured_at = (
+            datetime.fromisoformat(captured_at_str) if captured_at_str else None
+        )
         exposure = _optional_num(cap, "exposure")
         if led_positions:
-            captures.append(Capture(
-                filename=filename,
-                wavelength=_require_num(cap, "wavelength", f"captures[{i}]"),
-                led_positions=led_positions,
-                captured_at=captured_at,
-                exposure=exposure,
-            ))
+            captures.append(
+                Capture(
+                    filename=filename,
+                    wavelength=_require_num(cap, "wavelength", f"captures[{i}]"),
+                    led_positions=led_positions,
+                    captured_at=captured_at,
+                    exposure=exposure,
+                )
+            )
         else:
-            captures.append(DarkfieldCapture(
-                filename=filename,
-                led_positions=led_positions,
-                captured_at=captured_at,
-                exposure=exposure,
-            ))
+            captures.append(
+                DarkfieldCapture(
+                    filename=filename,
+                    led_positions=led_positions,
+                    captured_at=captured_at,
+                    exposure=exposure,
+                )
+            )
 
     version = _optional_str(data, "version")
     metadata_raw = data.get("metadata")
     metadata: dict[str, object] = {}
     if metadata_raw is not None:
         if not isinstance(metadata_raw, dict):
-            raise ManifestParseError(f"Expected dict for 'metadata', got {type(metadata_raw).__name__}")
+            raise ManifestParseError(
+                f"Expected dict for 'metadata', got {type(metadata_raw).__name__}"
+            )
         metadata = cast(dict[str, object], metadata_raw)
 
     dims_raw = data.get("capture_dimensions")

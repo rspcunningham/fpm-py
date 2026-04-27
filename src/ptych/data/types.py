@@ -1,4 +1,5 @@
 """Study manifest schema for Fourier ptychography reconstruction."""
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, TypeGuard

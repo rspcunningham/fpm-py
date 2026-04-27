@@ -131,9 +131,9 @@ class Pupil(nn.Module):
         rho_powers = (
             rho[:, None, None] ** radial_powers[None, :max_terms, :, None, None]
         )
-        radial = (
-            radial_coeffs[None, :max_terms, :, None, None] * rho_powers
-        ).sum(dim=2)
+        radial = (radial_coeffs[None, :max_terms, :, None, None] * rho_powers).sum(
+            dim=2
+        )
         terms = radial * angular_parts[None, :max_terms]
 
         phase = torch.einsum("ti,tihw->thw", self.phase_coeffs, terms[:, :num_phase])
@@ -142,10 +142,7 @@ class Pupil(nn.Module):
         pupil = amplitude * torch.exp(1j * phase)
 
         aperture = torch.sigmoid(
-            (
-                radius_fraction[:, None, None] * self.object_grid_size
-                - rho_pixels[None]
-            )
+            (radius_fraction[:, None, None] * self.object_grid_size - rho_pixels[None])
             / self.edge_width_px
         )
         return pupil * aperture

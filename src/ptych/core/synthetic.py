@@ -4,6 +4,7 @@ from jaxtyping import Complex, Float
 
 from ptych.core.forward import forward_model
 
+
 def synthesize_captures(
     object_tensor: Complex[torch.Tensor, "N N"],
     pupil_tensor: Complex[torch.Tensor, "N N"],

@@ -64,7 +64,9 @@ def _dav_url(base_url: str, share_id: str, path: str = "") -> str:
         urllib.parse.quote(part, safe="") for part in path.split("/") if part
     ]
     suffix = "/" + "/".join(encoded_segments) if encoded_segments else ""
-    return f"{base}/public.php/dav/files/{urllib.parse.quote(share_id, safe='')}{suffix}/"
+    return (
+        f"{base}/public.php/dav/files/{urllib.parse.quote(share_id, safe='')}{suffix}/"
+    )
 
 
 def _dav_file_url(base_url: str, share_id: str, path: str) -> str:
@@ -141,7 +143,9 @@ def _download_file_to_path(
 def _safe_destination(root: Path, relative_path: str) -> Path:
     destination_root = root.resolve()
     destination = (destination_root / relative_path).resolve()
-    if destination == destination_root or not destination.is_relative_to(destination_root):
+    if destination == destination_root or not destination.is_relative_to(
+        destination_root
+    ):
         raise RuntimeError(f"Invalid capture path '{relative_path}'")
     return destination
 
@@ -159,7 +163,9 @@ def _zip_content_length(url: str, share_id: str) -> int | None:
         return None
 
 
-def _directory_size_hint(base_url: str, share_id: str, directory_name: str) -> int | None:
+def _directory_size_hint(
+    base_url: str, share_id: str, directory_name: str
+) -> int | None:
     request = urllib.request.Request(
         _dav_url(base_url, share_id, directory_name),
         data=PROPFIND_DIRECTORY_SIZE_BODY,
@@ -191,13 +197,17 @@ def _directory_size_hint(base_url: str, share_id: str, directory_name: str) -> i
         return None
 
     return size if size >= 0 else None
+
+
 @dataclass(frozen=True)
 class RemoteFileEntry:
     path: str
     size: int | None
 
 
-def _list_directory_files(base_url: str, share_id: str, directory_path: str) -> list[RemoteFileEntry]:
+def _list_directory_files(
+    base_url: str, share_id: str, directory_path: str
+) -> list[RemoteFileEntry]:
     normalized_dir = directory_path.strip("/")
     request = urllib.request.Request(
         _dav_url(base_url, share_id, normalized_dir),
@@ -221,9 +231,7 @@ def _list_directory_files(base_url: str, share_id: str, directory_path: str) -> 
 
     root = ET.fromstring(payload)
     entries: list[RemoteFileEntry] = []
-    prefix = (
-        f"/public.php/dav/files/{urllib.parse.quote(share_id, safe='')}/{normalized_dir}/"
-    )
+    prefix = f"/public.php/dav/files/{urllib.parse.quote(share_id, safe='')}/{normalized_dir}/"
     for response_el in root.findall("d:response", DAV_NAMESPACES):
         href = response_el.findtext("d:href", namespaces=DAV_NAMESPACES)
         if href is None:
@@ -239,7 +247,9 @@ def _list_directory_files(base_url: str, share_id: str, directory_path: str) -> 
         if not relative_path:
             continue
 
-        raw_size = response_el.findtext(".//d:getcontentlength", namespaces=DAV_NAMESPACES)
+        raw_size = response_el.findtext(
+            ".//d:getcontentlength", namespaces=DAV_NAMESPACES
+        )
         size: int | None
         if raw_size is None:
             size = None
@@ -254,7 +264,9 @@ def _list_directory_files(base_url: str, share_id: str, directory_path: str) -> 
     return entries
 
 
-def _copy_stream_with_progress(response: DownloadResponse, fh: BinaryIO, progress: ProgressBar) -> None:
+def _copy_stream_with_progress(
+    response: DownloadResponse, fh: BinaryIO, progress: ProgressBar
+) -> None:
     while chunk := response.read(DOWNLOAD_CHUNK_SIZE):
         fh.write(chunk)
         progress.update(len(chunk))
@@ -267,7 +279,9 @@ def _stream_download_to_file(
     *,
     total_bytes: int | None = None,
 ) -> None:
-    total_bytes = total_bytes if total_bytes is not None else _response_content_length(response)
+    total_bytes = (
+        total_bytes if total_bytes is not None else _response_content_length(response)
+    )
     with destination.open("wb") as fh:
         if total_bytes is None:
             with tqdm(
@@ -366,7 +380,9 @@ class NextcloudShareTransport:
         }
 
         capture_files = [capture.filename for capture in manifest.captures]
-        missing_files = [filename for filename in capture_files if filename not in capture_entries]
+        missing_files = [
+            filename for filename in capture_files if filename not in capture_entries
+        ]
         if missing_files:
             first_missing = missing_files[0]
             raise RuntimeError(
@@ -374,22 +390,23 @@ class NextcloudShareTransport:
             )
 
         if len(set(capture_files)) != len(capture_files):
-            raise RuntimeError(f"Dataset '{dataset_id}' contains duplicate capture filenames")
+            raise RuntimeError(
+                f"Dataset '{dataset_id}' contains duplicate capture filenames"
+            )
 
         total_bytes: int | None
-        if all(capture_entries[filename].size is not None for filename in capture_files):
+        if all(
+            capture_entries[filename].size is not None for filename in capture_files
+        ):
             total_bytes = sum(
-                cast(int, capture_entries[filename].size)
-                for filename in capture_files
+                cast(int, capture_entries[filename].size) for filename in capture_files
             )
         else:
             total_bytes = None
 
         description = f"Downloading {dataset_id}"
         if total_bytes is not None:
-            description = (
-                f"{description} ({_format_bytes(total_bytes)} across {len(capture_files)} files)"
-            )
+            description = f"{description} ({_format_bytes(total_bytes)} across {len(capture_files)} files)"
 
         captures_dir = dataset_root / "captures"
         progress_lock = Lock()
@@ -403,12 +420,18 @@ class NextcloudShareTransport:
         for filename in capture_files:
             dest = _safe_destination(captures_dir, filename)
             expected_size = capture_entries[filename].size
-            if dest.is_file() and expected_size is not None and dest.stat().st_size == expected_size:
+            if (
+                dest.is_file()
+                and expected_size is not None
+                and dest.stat().st_size == expected_size
+            ):
                 already_downloaded_bytes += expected_size
             else:
                 files_to_download.append((filename, dest))
 
-        max_workers = min(_download_workers(), len(files_to_download)) if files_to_download else 1
+        max_workers = (
+            min(_download_workers(), len(files_to_download)) if files_to_download else 1
+        )
         with tqdm(
             total=total_bytes,
             initial=already_downloaded_bytes,
@@ -439,7 +462,9 @@ class NextcloudShareTransport:
 
         return dataset_root
 
-    def download_directory_zip(self, dataset_id: str, destination_path: str | Path) -> Path:
+    def download_directory_zip(
+        self, dataset_id: str, destination_path: str | Path
+    ) -> Path:
         return download_directory_zip_to_path(
             self.base_url,
             self.share_id,
@@ -449,7 +474,9 @@ class NextcloudShareTransport:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Download a directory from a public Nextcloud share")
+    parser = argparse.ArgumentParser(
+        description="Download a directory from a public Nextcloud share"
+    )
     parser.add_argument("base_url")
     parser.add_argument("share_id")
     parser.add_argument("directory_name")

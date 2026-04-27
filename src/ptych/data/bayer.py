@@ -3,7 +3,9 @@ import torch.nn.functional as F
 from jaxtyping import Float
 
 
-def _make_masks(pattern: str, H: int, W: int, device: torch.device) -> dict[str, torch.Tensor]:
+def _make_masks(
+    pattern: str, H: int, W: int, device: torch.device
+) -> dict[str, torch.Tensor]:
     """
     Build boolean masks for R, G, B pixel positions from a Bayer pattern string.
 
@@ -28,12 +30,14 @@ def _make_masks(pattern: str, H: int, W: int, device: torch.device) -> dict[str,
     return masks
 
 
-def _avg_conv(data: Float[torch.Tensor, "B H W"], kernel: torch.Tensor) -> Float[torch.Tensor, "B H W"]:
+def _avg_conv(
+    data: Float[torch.Tensor, "B H W"], kernel: torch.Tensor
+) -> Float[torch.Tensor, "B H W"]:
     """Apply a 3x3 averaging kernel with replicate padding."""
-    x = data.unsqueeze(1)                                    # [B, 1, H, W]
-    x = F.pad(x, (1, 1, 1, 1), mode="replicate")            # [B, 1, H+2, W+2]
-    x = F.conv2d(x, kernel.view(1, 1, 3, 3).to(x))         # [B, 1, H, W]
-    return x.squeeze(1)                                      # [B, H, W]
+    x = data.unsqueeze(1)  # [B, 1, H, W]
+    x = F.pad(x, (1, 1, 1, 1), mode="replicate")  # [B, 1, H+2, W+2]
+    x = F.conv2d(x, kernel.view(1, 1, 3, 3).to(x))  # [B, 1, H, W]
+    return x.squeeze(1)  # [B, H, W]
 
 
 def demosaic(
@@ -60,41 +64,53 @@ def demosaic(
     #   . 1 .
     #   1 . 1
     #   . 1 .
-    cross = torch.tensor([
-        [0, 1, 0],
-        [1, 0, 1],
-        [0, 1, 0],
-    ], dtype=data.dtype)
+    cross = torch.tensor(
+        [
+            [0, 1, 0],
+            [1, 0, 1],
+            [0, 1, 0],
+        ],
+        dtype=data.dtype,
+    )
 
     # Diagonal neighbors (used for R at B sites and B at R sites)
     #   1 . 1
     #   . . .
     #   1 . 1
-    diag = torch.tensor([
-        [1, 0, 1],
-        [0, 0, 0],
-        [1, 0, 1],
-    ], dtype=data.dtype)
+    diag = torch.tensor(
+        [
+            [1, 0, 1],
+            [0, 0, 0],
+            [1, 0, 1],
+        ],
+        dtype=data.dtype,
+    )
 
     # Horizontal neighbors (used for R/B at green sites in the same row)
     #   . . .
     #   1 . 1
     #   . . .
-    horiz = torch.tensor([
-        [0, 0, 0],
-        [1, 0, 1],
-        [0, 0, 0],
-    ], dtype=data.dtype)
+    horiz = torch.tensor(
+        [
+            [0, 0, 0],
+            [1, 0, 1],
+            [0, 0, 0],
+        ],
+        dtype=data.dtype,
+    )
 
     # Vertical neighbors (used for R/B at green sites in the same column)
     #   . 1 .
     #   . . .
     #   . 1 .
-    vert = torch.tensor([
-        [0, 1, 0],
-        [0, 0, 0],
-        [0, 1, 0],
-    ], dtype=data.dtype)
+    vert = torch.tensor(
+        [
+            [0, 1, 0],
+            [0, 0, 0],
+            [0, 1, 0],
+        ],
+        dtype=data.dtype,
+    )
 
     # Precompute filtered images
     cross_avg = _avg_conv(data, cross) / 4
@@ -130,7 +146,7 @@ def demosaic(
             y = torch.arange(H, device=data.device).view(-1, 1)
             same_row = torch.zeros(H, W, dtype=torch.bool, device=data.device)
             for r in color_rows:
-                same_row |= (y % 2 == r)
+                same_row |= y % 2 == r
 
             g_same_row = g_mask & same_row
             g_diff_row = g_mask & ~same_row

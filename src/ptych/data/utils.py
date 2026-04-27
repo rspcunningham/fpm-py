@@ -5,12 +5,14 @@ from jaxtyping import Float
 
 from ptych.data.types import Capture, LedPosition, StudyManifest, is_illuminated_capture
 
+
 def get_default_device() -> torch.device:
     if torch.cuda.is_available():
         return torch.device("cuda")
     if torch.backends.mps.is_available() and torch.backends.mps.is_built():
         return torch.device("mps")
     return torch.device("cpu")
+
 
 def compute_k_camera(
     led_position: LedPosition,
