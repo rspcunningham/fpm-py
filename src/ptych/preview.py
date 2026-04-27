@@ -14,8 +14,8 @@ import torch
 from jaxtyping import Float
 
 from ptych.data.study import PtychStudy
-from ptych.data.types import Capture
-from ptych.reconstruct import CaptureRegion
+from ptych.data.types import Capture, is_illuminated_capture
+from ptych.core.solver import CaptureRegion
 
 type ObjectPreviewMode = Literal["intensity", "amplitude", "phase"]
 
@@ -67,13 +67,30 @@ def _crop_capture_channels(
 
 
 def _valid_study_captures(study: PtychStudy) -> list[Capture]:
-    valid_captures = [capture for capture in study.manifest.captures if capture.led_positions]
+    valid_captures = [
+        capture
+        for capture in study.manifest.captures
+        if is_illuminated_capture(capture)
+    ]
     if len(valid_captures) != study.captures.shape[0]:
         raise ValueError(
             "Study manifest captures do not align with loaded study tensors. "
             + "Expected one loaded tensor per valid manifest capture."
         )
     return valid_captures
+
+
+def _capture_preview_title(
+    study: PtychStudy,
+    capture_index: int,
+    capture_meta: Capture,
+) -> str:
+    wavelength_nm = capture_meta.wavelength * 1e9
+    return (
+        f"{capture_meta.filename} | "
+        f"lambda={wavelength_nm:.0f} nm | "
+        f"k=({float(study.kx_batch[capture_index]):.4f}, {float(study.ky_batch[capture_index]):.4f})"
+    )
 
 def _prepare_study_capture_channel(
     study: PtychStudy,
@@ -359,11 +376,7 @@ def _write_study_capture_preview_html(
     )
     valid_captures = _valid_study_captures(study)
     capture_meta = valid_captures[capture_index]
-    resolved_title = title or (
-        f"{capture_meta.filename} | "
-        f"lambda={capture_meta.wavelength * 1e9:.0f} nm | "
-        f"k=({float(study.kx_batch[capture_index]):.4f}, {float(study.ky_batch[capture_index]):.4f})"
-    )
+    resolved_title = title or _capture_preview_title(study, capture_index, capture_meta)
     return _write_scalar_preview_html(
         image,
         title=resolved_title,
@@ -645,11 +658,7 @@ def show_study_capture(
     capture_meta = valid_captures[capture_index]
     resolved_title = title
     if resolved_title is None:
-        resolved_title = (
-            f"{capture_meta.filename} | "
-            f"lambda={capture_meta.wavelength * 1e9:.0f} nm | "
-            f"k=({float(study.kx_batch[capture_index]):.4f}, {float(study.ky_batch[capture_index]):.4f})"
-        )
+        resolved_title = _capture_preview_title(study, capture_index, capture_meta)
     html_path = _write_study_capture_preview_html(
         study,
         capture_index,

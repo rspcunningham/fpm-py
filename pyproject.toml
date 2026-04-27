@@ -14,6 +14,7 @@ authors = [
     {name = "Sammy Farnum", email = "sfarnumm1132@gmail.com"}
 ]
 dependencies = [
+    "jaxtyping>=0.3.3",
     "numpy>=2.3.4",
     "torch>=2.9.0",
     "torchvision>=0.24.0",
@@ -28,7 +29,9 @@ packages = ["src/ptych"]
 
 [dependency-groups]
 dev = [
-    "jaxtyping>=0.3.3",
     "ruff>=0.15.11",
     "ty>=0.0.31",
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"src/ptych/**/*.py" = ["F722", "F821"]

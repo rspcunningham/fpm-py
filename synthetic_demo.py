@@ -9,9 +9,8 @@ from PIL import Image
 
 from ptych import PtychStudy
 from ptych.data.synthetic import generate_synthetic_study
-from ptych.core.pupil import make_ideal_pupil, make_zernike_pupil_masked
-
-from viewer.qtlib import show_grayscale_subplots
+from ptych.core.pupil import Pupil, radius_fraction_from_optics
+from ptych.data.types import is_illuminated_capture
 
 IDEAL_IMAGE_PATH = Path("demo_images/ideal.png")
 OUTPUT_DIR = Path("results/synthetic_usaf_test")
@@ -21,7 +20,9 @@ study = PtychStudy.load("usaf-test")
 
 # Load ideal.png and convert to grayscale float [0, 1]
 img = Image.open(IDEAL_IMAGE_PATH).convert("L")
-amplitude: npt.NDArray[np.float32] = np.asarray(img, dtype=np.float32) / np.float32(255.0)
+amplitude: npt.NDArray[np.float32] = np.asarray(img, dtype=np.float32) / np.float32(
+    255.0
+)
 
 # Center-crop to a square since the current synthetic pipeline requires NxN square tensors.
 image_shape = cast(tuple[int, int], amplitude.shape)
@@ -30,7 +31,7 @@ width = image_shape[1]
 crop_size = min(height, width)
 top = (height - crop_size) // 2
 left = (width - crop_size) // 2
-amplitude = amplitude[top:top + crop_size, left:left + crop_size]
+amplitude = amplitude[top : top + crop_size, left : left + crop_size]
 
 synthetic_manifest = replace(
     study.manifest,
@@ -55,18 +56,23 @@ assert N % capture_size == 0, (
 object_to_capture_ratio = N // capture_size
 print(f"Using object-to-capture ratio: {object_to_capture_ratio}")
 
-pupil_params = make_ideal_pupil(
+pupil_capture = next(
+    capture
+    for capture in synthetic_manifest.captures
+    if is_illuminated_capture(capture)
+)
+pupil_params = Pupil(
     object_grid_size=N,
-    numerical_aperture=0.13,
-    wavelength_m=synthetic_manifest.captures[0].wavelength,
-    sensor_pixel_size_m=synthetic_manifest.sensor_pixel_size,
-    magnification=synthetic_manifest.magnification,
-    object_to_capture_ratio=object_to_capture_ratio,
+    radius_fraction=radius_fraction_from_optics(
+        numerical_aperture=0.13,
+        wavelength_m=pupil_capture.wavelength,
+        sensor_pixel_size_m=synthetic_manifest.sensor_pixel_size,
+        magnification=synthetic_manifest.magnification,
+        object_to_capture_ratio=object_to_capture_ratio,
+    ),
 )
-pupil_tensor = make_zernike_pupil_masked(
-    pupil_params.phase_coeffs, pupil_params.amp_coeffs,
-    pupil_params.basis, pupil_params.rad_fraction, use_softplus=False,
-)
+with torch.no_grad():
+    pupil_tensor = pupil_params()[0]
 
 # Run synthetic study generation
 captures = generate_synthetic_study(
@@ -76,4 +82,4 @@ captures = generate_synthetic_study(
     pupil_tensor=pupil_tensor,
 )
 
-show_grayscale_subplots(captures)
+print(f"Generated captures tensor shape: {tuple(captures.shape)}")

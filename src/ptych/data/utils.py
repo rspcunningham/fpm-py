@@ -3,7 +3,7 @@ import math
 import torch
 from jaxtyping import Float
 
-from ptych.data.types import Capture, LedPosition, StudyManifest
+from ptych.data.types import Capture, LedPosition, StudyManifest, is_illuminated_capture
 
 def get_default_device() -> torch.device:
     if torch.cuda.is_available():
@@ -54,7 +54,9 @@ def prepare_captures(
         (valid_captures, wavelength, kx_batch, ky_batch)
     """
     # Filter out darkfield captures
-    valid_captures: list[Capture] = [cap for cap in manifest.captures if cap.led_positions]
+    valid_captures: list[Capture] = [
+        cap for cap in manifest.captures if is_illuminated_capture(cap)
+    ]
 
     # Assert single wavelength
     wavelengths = list({cap.wavelength for cap in valid_captures})

@@ -8,7 +8,7 @@ import torch
 from jaxtyping import Float
 
 from ptych.data.bayer import demosaic
-from ptych.data.types import StudyManifest
+from ptych.data.types import StudyManifest, is_illuminated_capture
 from ptych.data.parse import parse_manifest
 from ptych.data.utils import prepare_captures
 
@@ -63,7 +63,9 @@ class PtychStudy:
             manifest = parse_manifest(cast(dict[str, object], json.load(f)))
 
         valid_captures, _, kx_batch, ky_batch = prepare_captures(manifest)
-        dark_captures = [cap for cap in manifest.captures if not cap.led_positions]
+        dark_captures = [
+            cap for cap in manifest.captures if not is_illuminated_capture(cap)
+        ]
 
         expected_shape = (manifest.capture_dimensions.height, manifest.capture_dimensions.width)
 

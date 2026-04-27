@@ -1,7 +1,7 @@
 """Study manifest schema for Fourier ptychography reconstruction."""
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import Any, TypeGuard
 from uuid import UUID
 
 
@@ -35,7 +35,7 @@ class LedPosition:
 
 @dataclass
 class Capture:
-    """A single captured image with its illumination parameters.
+    """A single illuminated image with its illumination parameters.
 
     Attributes:
         filename: Path to the image file relative to the manifest.
@@ -46,10 +46,35 @@ class Capture:
     """
 
     filename: str
-    wavelength: float | None
+    wavelength: float
     led_positions: list[LedPosition]
     captured_at: datetime | None = None
     exposure: float | None = None
+
+    def __post_init__(self) -> None:
+        if not self.led_positions:
+            raise ValueError("Illuminated captures require at least one LED position")
+
+
+@dataclass
+class DarkfieldCapture:
+    """A dark capture with no active LED illumination."""
+
+    filename: str
+    led_positions: list[LedPosition] = field(default_factory=list)
+    captured_at: datetime | None = None
+    exposure: float | None = None
+
+    def __post_init__(self) -> None:
+        if self.led_positions:
+            raise ValueError("Darkfield captures must not include LED positions")
+
+
+type ManifestCapture = Capture | DarkfieldCapture
+
+
+def is_illuminated_capture(capture: ManifestCapture) -> TypeGuard[Capture]:
+    return isinstance(capture, Capture)
 
 
 @dataclass
@@ -62,7 +87,8 @@ class StudyManifest:
         magnification: Objective magnification factor (e.g., 4.0 for 4x).
         sensor_pixel_size: Physical size of sensor pixels in meters.
         capture_dimensions: Pixel dimensions of all capture images.
-        captures: List of captured images with illumination data.
+        captures: List of captured images. Illuminated captures carry wavelength;
+            darkfield captures have no active LED positions and no wavelength.
         version: Manifest schema version.
         metadata: Arbitrary user-defined metadata.
     """
@@ -72,6 +98,6 @@ class StudyManifest:
     magnification: float
     sensor_pixel_size: float
     capture_dimensions: CaptureDimensions
-    captures: list[Capture]
+    captures: list[ManifestCapture]
     version: str = "1.0"
     metadata: dict[str, Any] = field(default_factory=dict)  # pyright: ignore[reportExplicitAny]
