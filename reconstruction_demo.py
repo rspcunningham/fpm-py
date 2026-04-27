@@ -66,7 +66,6 @@ result = solve_study(
     epochs=EPOCHS,
     torch_device=TORCH_DEVICE,
     tile_batch_size=TILE_BATCH_SIZE,
-    checkpoint_interval=50,
 )
 
 # Save reconstruction artifacts.
@@ -75,8 +74,7 @@ save_metrics_summary(
     path=OUTPUT_DIR / "reconstruction_metrics.png",
 )
 
-stitched_object = result.reconstruction_history[-1]
-save_tensor(result.reconstruction_history, OUTPUT_DIR / "reconstruction_history.npy")
+stitched_object = result.reconstruction
 save_tensor(stitched_object, OUTPUT_DIR / "stitched_object.npy")
 save_preview_png(
     stitched_object,
@@ -88,7 +86,5 @@ save_preview_png(
     OUTPUT_DIR / "stitched_phase.png",
     mode="phase",
 )
-print(
-    f"Reconstruction history: {result.reconstruction_history.shape} at epochs {result.checkpoint_epochs}"
-)
+print(f"Reconstruction tensor: {result.reconstruction.shape}")
 print(f"Stitched result shape: {stitched_object.shape}")

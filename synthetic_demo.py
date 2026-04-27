@@ -73,7 +73,7 @@ pupil_params = Pupil(
     use_softplus=False,
 )
 with torch.no_grad():
-    pupil_tensor = pupil_params()
+    pupil_tensor = pupil_params()[0]
 
 # Run synthetic study generation
 captures = generate_synthetic_study(

@@ -5,11 +5,7 @@ from dataclasses import dataclass
 import torch
 from jaxtyping import Complex
 
-from ptych.core.metrics import (
-    BatchCompleteCallback,
-    BatchMetricsRecord,
-    TileCompleteCallback,
-)
+from ptych.core.metrics import BatchMetricsRecord
 from ptych.core.pupil import Pupil
 from ptych.core.tiled import solve_tiled_from_inputs
 from ptych.data.study import PtychStudy
@@ -52,8 +48,7 @@ def _resolve_capture_indices(selector: CaptureSelector, total: int) -> list[int]
 
 @dataclass
 class StudySolveResult:
-    reconstruction_history: Complex[torch.Tensor, "C N N"]
-    checkpoint_epochs: list[int]
+    reconstruction: Complex[torch.Tensor, "N N"]
     tile_pupils: dict[tuple[int, int], Complex[torch.Tensor, "N N"]]
     batch_metrics: list[BatchMetricsRecord]
 
@@ -151,9 +146,6 @@ def solve_study(
     epochs: int = 1000,
     torch_device: str | torch.device = "cpu",
     learn_k_vectors: bool = False,
-    checkpoint_interval: int = 50,
-    on_tile_complete: TileCompleteCallback | None = None,
-    on_batch_complete: BatchCompleteCallback | None = None,
     tile_batch_size: int = 1,
 ) -> StudySolveResult:
     captures, kx_batch, ky_batch = _prepare_study_inputs(
@@ -161,7 +153,7 @@ def solve_study(
         captures=capture_selector,
         capture_region=capture_region,
     )
-    reconstruction_history, checkpoint_epochs, tile_pupils, batch_metrics = (
+    reconstruction, tile_pupils, batch_metrics = (
         solve_tiled_from_inputs(
             captures,
             kx_batch,
@@ -172,15 +164,11 @@ def solve_study(
             epochs=epochs,
             torch_device=torch_device,
             learn_k_vectors=learn_k_vectors,
-            checkpoint_interval=checkpoint_interval,
-            on_tile_complete=on_tile_complete,
-            on_batch_complete=on_batch_complete,
             tile_batch_size=tile_batch_size,
         )
     )
     return StudySolveResult(
-        reconstruction_history=reconstruction_history,
-        checkpoint_epochs=checkpoint_epochs,
+        reconstruction=reconstruction,
         tile_pupils=tile_pupils,
         batch_metrics=batch_metrics,
     )
