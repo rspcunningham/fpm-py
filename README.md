@@ -12,7 +12,7 @@ We then use AdamW to fit the latent scene so its predicted captures match the me
 
 Forward model:
 
-$$I_j(\mathbf{r}) = \lvert \mathcal{F}^{-1}\!\left\{ P(\mathbf{k}) \cdot \mathcal{F}\!\left\{ O(\mathbf{r})\, e^{i 2\pi \mathbf{k}_j \cdot \mathbf{r}} \right\} \right\} \rvert^2$$
+$$I_j(\mathbf{r}) = \lvert \mathcal{F}^{-1}[ P(\mathbf{k}) \cdot \mathcal{F}[ O(\mathbf{r})\, e^{i 2\pi \mathbf{k}_j \cdot \mathbf{r}} ] ] \rvert^2$$
 
 Optimization objective:
 
