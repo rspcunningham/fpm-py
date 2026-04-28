@@ -14,7 +14,6 @@ from ptych.data.study import PtychStudy
 
 @dataclass
 class StudySolveResult:
-    reconstruction: Float[Tensor, "N N"]
     object: Complex[Tensor, "N N"]
     pupils: dict[tuple[int, int], Complex[Tensor, "N N"]]
     metrics: list[BatchMetricsRecord]
@@ -275,17 +274,13 @@ def solve_study(
         "width": width,
         "object_to_capture_ratio": object_to_capture_ratio,
     }
-    reconstruction = _stitch_patch_field(
-        [(batch.patches, batch.reconstruction) for batch in solved_batches],
-        **stitch_kwargs,
-    )
+
     object_tensor = _stitch_patch_field(
         [(batch.patches, batch.object) for batch in solved_batches],
         **stitch_kwargs,
     )
 
     return StudySolveResult(
-        reconstruction=reconstruction,
         object=object_tensor,
         pupils=pupils,
         metrics=metrics,

@@ -5,7 +5,6 @@ import numpy as np
 from ptych import PtychStudy, solve_study
 from ptych.core.metric_plots import save_metrics_summary
 from ptych.core.pupil import radius_fraction_from_optics
-from ptych.data.types import is_illuminated_capture
 
 dataset = "usaf-test-dark"
 
@@ -33,9 +32,7 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 study = PtychStudy.load(dataset, crop_size=CROP_SIZE)
 
 # Prepare the initial pupil guess.
-study_wavelength = next(
-    capture for capture in study.manifest.captures if is_illuminated_capture(capture)
-).wavelength
+study_wavelength = study.manifest.captures[0].wavelength  # type: ignore
 
 pupil_radius_fraction = radius_fraction_from_optics(
     numerical_aperture=NUMERICAL_APERTURE,
@@ -64,10 +61,6 @@ save_metrics_summary(
     path=OUTPUT_DIR / "reconstruction_metrics.png",
 )
 
-reconstruction = result.reconstruction
-np.save(OUTPUT_DIR / "reconstruction.npy", reconstruction.cpu().numpy())
 np.save(OUTPUT_DIR / "object.npy", result.object.cpu().numpy())
-
-print(f"Reconstruction tensor: {result.reconstruction.shape}")
-print(f"Object tensor: {result.object.shape}")
-print(f"Stitched result shape: {reconstruction.shape}")
+print("Reconstruction complete!")
+print(f"Reconstructed object tensor: {result.object.shape}")
