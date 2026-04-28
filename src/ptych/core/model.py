@@ -24,9 +24,11 @@ def _pupil_cutoff_limits(
 class PtychographyModel(nn.Module):
     def __init__(
         self,
-        measured_intensities: Float[Tensor, "T B n n"],
-        kx_batch: Float[Tensor, "B"],
-        ky_batch: Float[Tensor, "B"],
+        measured_intensity_batch: Float[
+            Tensor, "patch_batch illumination height width"
+        ],
+        illumination_kx: Float[Tensor, "illumination"],
+        illumination_ky: Float[Tensor, "illumination"],
         *,
         object_to_capture_ratio: int,
         pupil_cutoff_cyc_per_px_init: Tensor | float,
@@ -34,41 +36,45 @@ class PtychographyModel(nn.Module):
         pupil_num_amplitude_terms: int = 1,
     ) -> None:
         super().__init__()
-        num_tiles, _, capture_grid_size, _ = measured_intensities.shape
-        object_grid_size = capture_grid_size * object_to_capture_ratio
+        patch_batch_size, _, capture_height, _ = measured_intensity_batch.shape
+        object_grid_size = capture_height * object_to_capture_ratio
         min_pupil_cutoff, max_pupil_cutoff = _pupil_cutoff_limits(
             pupil_cutoff_cyc_per_px_init
         )
 
         self.object_to_capture_ratio = object_to_capture_ratio
-        self.object = Object(measured_intensities, object_to_capture_ratio)
+        self.object = Object(measured_intensity_batch, object_to_capture_ratio)
         self.pupil = Pupil(
             object_grid_size,
             num_phase_terms=pupil_num_phase_terms,
             num_amplitude_terms=pupil_num_amplitude_terms,
             pupil_cutoff_cyc_per_px=pupil_cutoff_cyc_per_px_init,
-            num_tiles=num_tiles,
+            patch_batch_size=patch_batch_size,
             pupil_cutoff_bounds=(min_pupil_cutoff, max_pupil_cutoff),
         )
         self.forward_model = FPMForwardModel(object_grid_size)
-        self.register_buffer("kx", kx_batch / object_to_capture_ratio)
-        self.register_buffer("ky", ky_batch / object_to_capture_ratio)
+        self.register_buffer(
+            "illumination_kx", illumination_kx / object_to_capture_ratio
+        )
+        self.register_buffer(
+            "illumination_ky", illumination_ky / object_to_capture_ratio
+        )
 
-    def forward(self) -> Float[Tensor, "T B n n"]:
+    def forward(self) -> Float[Tensor, "patch_batch illumination height width"]:
         object_tensor = self.object()
         pupil_tensor = self.pupil()
         predicted_intensities_full_res = self.forward_model(
             object_tensor,
             pupil_tensor,
-            self.kx,
-            self.ky,
+            self.illumination_kx,
+            self.illumination_ky,
         )
-        num_tiles, num_illuminations, object_size, _ = (
+        patch_batch_size, num_illuminations, object_size, _ = (
             predicted_intensities_full_res.shape
         )
         return F.avg_pool2d(
             predicted_intensities_full_res.reshape(
-                num_tiles * num_illuminations,
+                patch_batch_size * num_illuminations,
                 1,
                 object_size,
                 object_size,
@@ -76,7 +82,7 @@ class PtychographyModel(nn.Module):
             kernel_size=self.object_to_capture_ratio,
             stride=self.object_to_capture_ratio,
         ).reshape(
-            num_tiles,
+            patch_batch_size,
             num_illuminations,
             object_size // self.object_to_capture_ratio,
             object_size // self.object_to_capture_ratio,

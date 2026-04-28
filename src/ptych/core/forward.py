@@ -21,26 +21,30 @@ class FPMForwardModel(nn.Module):
 
     def forward(
         self,
-        object_tensor: Complex[torch.Tensor, "T N N"],
-        pupil_tensor: Complex[torch.Tensor, "T N N"],
-        kx: Float[torch.Tensor, "B"],
-        ky: Float[torch.Tensor, "B"],
-    ) -> Float[torch.Tensor, "T B N N"]:
+        object_tensor: Complex[torch.Tensor, "patch_batch object_height object_width"],
+        pupil_tensor: Complex[torch.Tensor, "patch_batch object_height object_width"],
+        illumination_kx: Float[torch.Tensor, "illumination"],
+        illumination_ky: Float[torch.Tensor, "illumination"],
+    ) -> Float[torch.Tensor, "patch_batch illumination object_height object_width"]:
         """
         Return predicted full-resolution intensities for each k-space location.
         """
-        _, n, _ = object_tensor.shape
-        if n != self.object_grid_size:
+        _, object_height, _ = object_tensor.shape
+        if object_height != self.object_grid_size:
             raise ValueError(
-                f"Expected object grid size {self.object_grid_size}, got {n}"
+                f"Expected object grid size {self.object_grid_size}, got {object_height}"
             )
 
         x_grid = cast(torch.Tensor, self.x_grid)
         y_grid = cast(torch.Tensor, self.y_grid)
-        kx = kx.view(-1, 1, 1)
-        ky = ky.view(-1, 1, 1)
+        illumination_kx = illumination_kx.view(-1, 1, 1)
+        illumination_ky = illumination_ky.view(-1, 1, 1)
 
-        phase = 2 * torch.pi * (kx * x_grid[None] + ky * y_grid[None])
+        phase = (
+            2
+            * torch.pi
+            * (illumination_kx * x_grid[None] + illumination_ky * y_grid[None])
+        )
         phase_ramps = torch.exp(1j * phase.to(object_tensor.dtype))
 
         tilted_objects = object_tensor[:, None] * phase_ramps[None]

@@ -45,16 +45,16 @@ class Pupil(nn.Module):
         phase_coeffs: Tensor | None = None,
         raw_amplitude_coeffs: Tensor | None = None,
         pupil_cutoff_cyc_per_px: Tensor | float = 0.2,
-        num_tiles: int | None = None,
+        patch_batch_size: int | None = None,
         edge_width_px: float = 2.0,
         pupil_cutoff_bounds: tuple[float, float] | None = None,
     ) -> None:
         super().__init__()
-        num_tiles = num_tiles or 1
+        patch_batch_size = patch_batch_size or 1
         self.object_grid_size = object_grid_size
         self.num_phase_terms = num_phase_terms
         self.num_amplitude_terms = num_amplitude_terms
-        self.num_tiles = num_tiles
+        self.patch_batch_size = patch_batch_size
         self.edge_width_px = edge_width_px
 
         rho_pixels, angular_parts, radial_coeffs, radial_powers = zernike_basis_tensors(
@@ -81,19 +81,19 @@ class Pupil(nn.Module):
         pupil_cutoff = _init_tensor(pupil_cutoff_cyc_per_px)
 
         if phase.ndim == 1:
-            phase = phase.reshape(1, -1).repeat(num_tiles, 1)
+            phase = phase.reshape(1, -1).repeat(patch_batch_size, 1)
         elif phase.shape[0] == 1:
-            phase = phase.repeat(num_tiles, 1)
+            phase = phase.repeat(patch_batch_size, 1)
 
         if raw_amplitude.ndim == 1:
-            raw_amplitude = raw_amplitude.reshape(1, -1).repeat(num_tiles, 1)
+            raw_amplitude = raw_amplitude.reshape(1, -1).repeat(patch_batch_size, 1)
         elif raw_amplitude.shape[0] == 1:
-            raw_amplitude = raw_amplitude.repeat(num_tiles, 1)
+            raw_amplitude = raw_amplitude.repeat(patch_batch_size, 1)
 
         if pupil_cutoff.ndim == 0:
-            pupil_cutoff = pupil_cutoff.reshape(1).repeat(num_tiles)
+            pupil_cutoff = pupil_cutoff.reshape(1).repeat(patch_batch_size)
         elif pupil_cutoff.ndim == 1 and pupil_cutoff.shape[0] == 1:
-            pupil_cutoff = pupil_cutoff.repeat(num_tiles)
+            pupil_cutoff = pupil_cutoff.repeat(patch_batch_size)
 
         self.phase_coeffs = nn.Parameter(phase)
         self.raw_amplitude_coeffs = nn.Parameter(raw_amplitude)
@@ -126,7 +126,7 @@ class Pupil(nn.Module):
             self.max_pupil_cutoff_cyc_per_px,
         )
 
-    def forward(self) -> Complex[Tensor, "T N N"]:
+    def forward(self) -> Complex[Tensor, "patch_batch object_height object_width"]:
         pupil_cutoff_cyc_per_px = self.pupil_cutoff_cyc_per_px
         rho_pixels = cast(Tensor, self.rho_pixels)
         angular_parts = cast(Tensor, self.angular_parts)

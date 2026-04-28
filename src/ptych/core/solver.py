@@ -15,9 +15,9 @@ from ptych.data.study import PtychStudy
 
 @dataclass
 class StudySolveResult:
-    object: Complex[Tensor, "N N"]
-    capture_0: Float[Tensor, "n n"]
-    pupils: dict[tuple[int, int], Complex[Tensor, "N N"]]
+    object: Complex[Tensor, "object_height object_width"]
+    capture_0: Float[Tensor, "height width"]
+    pupils: dict[tuple[int, int], Complex[Tensor, "object_height object_width"]]
     metrics: list[BatchMetricsRecord]
 
 
@@ -46,8 +46,8 @@ class _PatchCrop:
 @dataclass(frozen=True)
 class _SolvedBatch:
     patches: list[_Patch]
-    reconstruction: Float[Tensor, "P N N"]
-    object: Complex[Tensor, "P N N"]
+    reconstruction: Float[Tensor, "patch_batch object_height object_width"]
+    object: Complex[Tensor, "patch_batch object_height object_width"]
 
 
 def _axis_patches(length: int, patch_size: int) -> list[_AxisPatch]:
@@ -125,9 +125,9 @@ def _stitch_patch_field(
 
 
 def _train_batch(
-    measured_intensities: Float[Tensor, "P B n n"],
-    kx: Float[Tensor, "B"],
-    ky: Float[Tensor, "B"],
+    measured_intensity_batch: Float[Tensor, "patch_batch illumination height width"],
+    illumination_kx: Float[Tensor, "illumination"],
+    illumination_ky: Float[Tensor, "illumination"],
     *,
     object_to_capture_ratio: int,
     pupil_cutoff_cyc_per_px: Tensor | float,
@@ -136,15 +136,15 @@ def _train_batch(
     epochs: int,
     device: str | torch.device,
 ) -> tuple[
-    Complex[Tensor, "P N N"],
-    Complex[Tensor, "P N N"],
+    Complex[Tensor, "patch_batch object_height object_width"],
+    Complex[Tensor, "patch_batch object_height object_width"],
     InverseMetrics,
 ]:
-    measured_intensities = measured_intensities.to(device)
+    measured_intensity_batch = measured_intensity_batch.to(device)
     model = PtychographyModel(
-        measured_intensities,
-        kx.to(device),
-        ky.to(device),
+        measured_intensity_batch,
+        illumination_kx.to(device),
+        illumination_ky.to(device),
         object_to_capture_ratio=object_to_capture_ratio,
         pupil_cutoff_cyc_per_px_init=pupil_cutoff_cyc_per_px,
         pupil_num_phase_terms=pupil_num_phase_terms,
@@ -165,10 +165,10 @@ def _train_batch(
         ]
     )
 
-    num_patches, num_illuminations, _, _ = measured_intensities.shape
-    loss_history = measured_intensities.new_zeros(epochs)
-    patch_loss_history = measured_intensities.new_zeros(epochs, num_patches)
-    illumination_loss_history = measured_intensities.new_zeros(
+    patch_batch_size, num_illuminations, _, _ = measured_intensity_batch.shape
+    loss_history = measured_intensity_batch.new_zeros(epochs)
+    patch_loss_history = measured_intensity_batch.new_zeros(epochs, patch_batch_size)
+    illumination_loss_history = measured_intensity_batch.new_zeros(
         epochs,
         num_illuminations,
     )
@@ -176,7 +176,7 @@ def _train_batch(
     for epoch in tqdm(range(epochs), desc="Solving inverse model..."):
         predicted_intensities = model()
         intensity_residual = torch.sqrt(predicted_intensities + 1e-8) - torch.sqrt(
-            measured_intensities + 1e-8
+            measured_intensity_batch + 1e-8
         )
         squared_intensity_residual = intensity_residual.square()
         patch_loss = squared_intensity_residual.mean(dim=(1, 2, 3))
@@ -213,7 +213,7 @@ def solve_study(
     pupil_num_amplitude_terms: int = 1,
     epochs: int = 1000,
     device: str | torch.device = "cpu",
-    batch_size: int = 1,
+    patch_batch_size: int = 1,
 ) -> StudySolveResult:
 
     capture_0 = study.captures[0]
@@ -235,19 +235,19 @@ def solve_study(
     ]
 
     solved_batches: list[_SolvedBatch] = []
-    pupils: dict[tuple[int, int], Complex[Tensor, "N N"]] = {}
+    pupils: dict[tuple[int, int], Complex[Tensor, "object_height object_width"]] = {}
     metrics: list[BatchMetricsRecord] = []
 
-    for start in range(0, len(patches), batch_size):
-        batch = patches[start : start + batch_size]
-        batch_measured_intensities = torch.stack(
+    for start in range(0, len(patches), patch_batch_size):
+        patch_batch = patches[start : start + patch_batch_size]
+        measured_intensity_batch = torch.stack(
             [
                 study.captures[
                     :,
                     patch.y.start : patch.y.start + patch_size,
                     patch.x.start : patch.x.start + patch_size,
                 ]
-                for patch in batch
+                for patch in patch_batch
             ]
         )
 
@@ -256,9 +256,9 @@ def solve_study(
             batch_pupils,
             batch_metrics,
         ) = _train_batch(
-            batch_measured_intensities,
-            study.kx_batch,
-            study.ky_batch,
+            measured_intensity_batch,
+            study.illumination_kx,
+            study.illumination_ky,
             object_to_capture_ratio=object_to_capture_ratio,
             pupil_cutoff_cyc_per_px=pupil_cutoff_cyc_per_px,
             pupil_num_phase_terms=pupil_num_phase_terms,
@@ -268,19 +268,19 @@ def solve_study(
         )
         solved_batches.append(
             _SolvedBatch(
-                patches=batch,
+                patches=patch_batch,
                 reconstruction=objects.abs().square(),
                 object=objects,
             )
         )
         metrics.append(
             {
-                "patches": [(patch.y.start, patch.x.start) for patch in batch],
+                "patches": [(patch.y.start, patch.x.start) for patch in patch_batch],
                 "metrics": batch_metrics,
             }
         )
 
-        for idx, patch in enumerate(batch):
+        for idx, patch in enumerate(patch_batch):
             pupils[(patch.y.start, patch.x.start)] = batch_pupils[idx]
 
     stitch_kwargs = {

@@ -56,16 +56,16 @@ def _capture_exposure_ms(capture_index: int, exposure_ms: float | None) -> float
 
 def preprocess_study_data(
     manifest: StudyManifest,
-    raw_images: Sequence[Float[torch.Tensor, "H W"]],
+    raw_images: Sequence[Float[torch.Tensor, "height width"]],
     *,
     crop_size: int | None = None,
 ) -> tuple[
     list[Capture],
-    Float[torch.Tensor, "B n n"],
-    Float[torch.Tensor, "B"],
-    Float[torch.Tensor, "B"],
+    Float[torch.Tensor, "illumination height width"],
+    Float[torch.Tensor, "illumination"],
+    Float[torch.Tensor, "illumination"],
 ]:
-    valid_captures, _, kx_batch, ky_batch = prepare_captures(manifest)
+    valid_captures, _, illumination_kx, illumination_ky = prepare_captures(manifest)
     dark_indices = [
         idx
         for idx, capture in enumerate(manifest.captures)
@@ -123,4 +123,4 @@ def preprocess_study_data(
             "Prepared captures must contain at least one positive intensity value"
         )
 
-    return valid_captures, captures_tensor / max_value, kx_batch, ky_batch
+    return valid_captures, captures_tensor / max_value, illumination_kx, illumination_ky

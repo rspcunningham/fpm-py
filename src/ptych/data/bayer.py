@@ -4,7 +4,7 @@ from jaxtyping import Float
 
 
 def _make_masks(
-    pattern: str, H: int, W: int, device: torch.device
+    pattern: str, height: int, width: int, device: torch.device
 ) -> dict[str, torch.Tensor]:
     """
     Build boolean masks for R, G, B pixel positions from a Bayer pattern string.
@@ -17,12 +17,12 @@ def _make_masks(
     for idx, c in enumerate(pattern):
         tile[c].append((idx // 2, idx % 2))  # (row, col) within the 2x2 tile
 
-    y = torch.arange(H, device=device).view(-1, 1)
-    x = torch.arange(W, device=device).view(1, -1)
+    y = torch.arange(height, device=device).view(-1, 1)
+    x = torch.arange(width, device=device).view(1, -1)
 
     masks: dict[str, torch.Tensor] = {}
     for c in "RGB":
-        mask: torch.Tensor = torch.zeros(H, W, dtype=torch.bool, device=device)
+        mask: torch.Tensor = torch.zeros(height, width, dtype=torch.bool, device=device)
         for row, col in tile[c]:
             mask |= (y % 2 == row) & (x % 2 == col)
         masks[c] = mask
@@ -31,32 +31,32 @@ def _make_masks(
 
 
 def _avg_conv(
-    data: Float[torch.Tensor, "B H W"], kernel: torch.Tensor
-) -> Float[torch.Tensor, "B H W"]:
+    data: Float[torch.Tensor, "image height width"], kernel: torch.Tensor
+) -> Float[torch.Tensor, "image height width"]:
     """Apply a 3x3 averaging kernel with replicate padding."""
-    x = data.unsqueeze(1)  # [B, 1, H, W]
-    x = F.pad(x, (1, 1, 1, 1), mode="replicate")  # [B, 1, H+2, W+2]
-    x = F.conv2d(x, kernel.view(1, 1, 3, 3).to(x))  # [B, 1, H, W]
-    return x.squeeze(1)  # [B, H, W]
+    x = data.unsqueeze(1)
+    x = F.pad(x, (1, 1, 1, 1), mode="replicate")
+    x = F.conv2d(x, kernel.view(1, 1, 3, 3).to(x))
+    return x.squeeze(1)
 
 
 def demosaic(
-    data: Float[torch.Tensor, "B H W"],
+    data: Float[torch.Tensor, "image height width"],
     pattern: str = "RGGB",
-) -> Float[torch.Tensor, "B 3 H W"]:
+) -> Float[torch.Tensor, "image channel height width"]:
     """
     Bilinear Bayer demosaicing.
 
     Args:
-        data:    [B, H, W] single-channel Bayer mosaic
+        data:    [image, height, width] single-channel Bayer mosaic
         pattern: one of "RGGB", "GRBG", "GBRG", "BGGR"
 
     Returns:
-        [B, 3, H, W] full-color image (channels in RGB order)
+        [image, channel, height, width] full-color image (channels in RGB order)
     """
     assert pattern in ("RGGB", "GRBG", "GBRG", "BGGR"), f"Unknown pattern: {pattern}"
-    _, H, W = data.shape
-    masks = _make_masks(pattern, H, W, data.device)
+    _, height, width = data.shape
+    masks = _make_masks(pattern, height, width, data.device)
 
     # --- Interpolation kernels (unnormalized, we divide by count) ---
 
@@ -119,7 +119,9 @@ def demosaic(
     vert_avg = _avg_conv(data, vert) / 2
 
     # --- Assemble each channel ---
-    out = torch.empty(data.shape[0], 3, H, W, dtype=data.dtype, device=data.device)
+    out = torch.empty(
+        data.shape[0], 3, height, width, dtype=data.dtype, device=data.device
+    )
 
     for i, color in enumerate("RGB"):
         ch = data.clone()
@@ -143,8 +145,8 @@ def demosaic(
             color_rows: set[int] = {r for r, _c in _tile_positions(pattern, color)}
             g_mask: torch.Tensor = masks["G"]
 
-            y = torch.arange(H, device=data.device).view(-1, 1)
-            same_row = torch.zeros(H, W, dtype=torch.bool, device=data.device)
+            y = torch.arange(height, device=data.device).view(-1, 1)
+            same_row = torch.zeros(height, width, dtype=torch.bool, device=data.device)
             for r in color_rows:
                 same_row |= y % 2 == r
 

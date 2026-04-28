@@ -8,17 +8,19 @@ from torch import Tensor
 class Object(nn.Module):
     def __init__(
         self,
-        measured_intensities: Float[Tensor, "T B n n"],
+        measured_intensity_batch: Float[
+            Tensor, "patch_batch illumination height width"
+        ],
         object_to_capture_ratio: int,
     ) -> None:
         super().__init__()
         init_amp = F.interpolate(
-            measured_intensities[:, 0].unsqueeze(1),
+            measured_intensity_batch[:, 0].unsqueeze(1),
             scale_factor=object_to_capture_ratio,
             mode="nearest",
         ).squeeze(1)
         self.amplitude = nn.Parameter(torch.sqrt(init_amp + 1e-8).detach())
         self.phase = nn.Parameter(torch.zeros_like(init_amp))
 
-    def forward(self) -> Complex[Tensor, "T N N"]:
+    def forward(self) -> Complex[Tensor, "patch_batch object_height object_width"]:
         return self.amplitude * torch.exp(1j * self.phase)

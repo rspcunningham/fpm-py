@@ -46,14 +46,19 @@ def compute_k_camera(
 
 def prepare_captures(
     manifest: StudyManifest,
-) -> tuple[list[Capture], float, Float[torch.Tensor, "B"], Float[torch.Tensor, "B"]]:
+) -> tuple[
+    list[Capture],
+    float,
+    Float[torch.Tensor, "illumination"],
+    Float[torch.Tensor, "illumination"],
+]:
     """Filter, validate, and compute k-vectors for a manifest's captures.
 
     Filters out darkfield captures (no LED positions), asserts single wavelength
     and single LED per capture, then computes camera-normalized k-vectors.
 
     Returns:
-        (valid_captures, wavelength, kx_batch, ky_batch)
+        (valid_captures, wavelength, illumination_kx, illumination_ky)
     """
     # Filter out darkfield captures
     valid_captures: list[Capture] = [
@@ -84,7 +89,7 @@ def prepare_captures(
         )
         for cap in valid_captures
     ]
-    kx_batch = torch.tensor([kx for kx, _ in k_vectors])
-    ky_batch = torch.tensor([ky for _, ky in k_vectors])
+    illumination_kx = torch.tensor([kx for kx, _ in k_vectors])
+    illumination_ky = torch.tensor([ky for _, ky in k_vectors])
 
-    return valid_captures, wavelength, kx_batch, ky_batch
+    return valid_captures, wavelength, illumination_kx, illumination_ky

@@ -16,28 +16,28 @@ class PtychStudy:
     manifest: StudyManifest
     capture_metadata: list[Capture]
     captures: Float[
-        torch.Tensor, "B n n"
-    ]  # [B, n, n] demosaiced, exposure-corrected single-channel float intensities normalized to max 1
-    kx_batch: Float[
-        torch.Tensor, "B"
-    ]  # [B] normalized to camera grid (cycles per sample pixel)
-    ky_batch: Float[
-        torch.Tensor, "B"
-    ]  # [B] normalized to camera grid (cycles per sample pixel)
+        torch.Tensor, "illumination height width"
+    ]  # Demosaiced, exposure-corrected single-channel float intensities normalized to max 1.
+    illumination_kx: Float[
+        torch.Tensor, "illumination"
+    ]  # Normalized to camera grid (cycles per sample pixel).
+    illumination_ky: Float[
+        torch.Tensor, "illumination"
+    ]  # Normalized to camera grid (cycles per sample pixel).
 
     def __init__(
         self,
         manifest: StudyManifest,
         capture_metadata: list[Capture],
-        captures: Float[torch.Tensor, "B n n"],
-        kx_batch: Float[torch.Tensor, "B"],
-        ky_batch: Float[torch.Tensor, "B"],
+        captures: Float[torch.Tensor, "illumination height width"],
+        illumination_kx: Float[torch.Tensor, "illumination"],
+        illumination_ky: Float[torch.Tensor, "illumination"],
     ):
         self.manifest = manifest
         self.capture_metadata = capture_metadata
         self.captures = captures
-        self.kx_batch = kx_batch
-        self.ky_batch = ky_batch
+        self.illumination_kx = illumination_kx
+        self.illumination_ky = illumination_ky
 
     @classmethod
     def load(
@@ -62,7 +62,7 @@ class PtychStudy:
             manifest.capture_dimensions.height,
             manifest.capture_dimensions.width,
         )
-        raw_images: list[Float[torch.Tensor, "H W"]] = []
+        raw_images: list[Float[torch.Tensor, "height width"]] = []
         for cap in manifest.captures:
             img_path = dir_path / "captures" / cap.filename
             img = cast(npt.NDArray[np.float64], np.load(img_path, mmap_mode="r"))
@@ -76,7 +76,12 @@ class PtychStudy:
             )
             raw_images.append(torch.from_numpy(np.array(img, dtype=np.float32)))
 
-        capture_metadata, captures_tensor, kx_batch, ky_batch = preprocess_study_data(
+        (
+            capture_metadata,
+            captures_tensor,
+            illumination_kx,
+            illumination_ky,
+        ) = preprocess_study_data(
             manifest,
             raw_images,
             crop_size=crop_size,
@@ -86,6 +91,6 @@ class PtychStudy:
             manifest=manifest,
             capture_metadata=capture_metadata,
             captures=captures_tensor,
-            kx_batch=kx_batch,
-            ky_batch=ky_batch,
+            illumination_kx=illumination_kx,
+            illumination_ky=illumination_ky,
         )

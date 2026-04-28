@@ -13,24 +13,24 @@ from ptych.data.utils import prepare_captures
 def generate_synthetic_study(
     manifest: StudyManifest,
     output_dir: str | Path,
-    object_tensor: Complex[torch.Tensor, "N N"],
-    pupil_tensor: Complex[torch.Tensor, "N N"],
-) -> Float[torch.Tensor, "B n n"]:
+    object_tensor: Complex[torch.Tensor, "object_height object_width"],
+    pupil_tensor: Complex[torch.Tensor, "object_height object_width"],
+) -> Float[torch.Tensor, "illumination height width"]:
     """
     Generate a synthetic study dataset from an in-memory manifest.
 
     Args:
         manifest: Manifest describing the target synthetic dataset
         output_dir: Directory where info.json and captures/ will be written
-        object_tensor: Complex object tensor [N, N]
-        pupil_tensor: Complex pupil tensor [N, N]
+        object_tensor: Complex object tensor [object_height, object_width]
+        pupil_tensor: Complex pupil tensor [object_height, object_width]
         (object-to-capture ratio is derived from object_tensor size vs manifest capture_dimensions)
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     write_manifest(manifest, output_dir / "info.json")
 
-    valid_captures, _, kx_batch, ky_batch = prepare_captures(manifest)
+    valid_captures, _, illumination_kx, illumination_ky = prepare_captures(manifest)
 
     # Get the object-to-capture ratio from the ideal object and target capture size
     width, height = (
@@ -50,7 +50,11 @@ def generate_synthetic_study(
 
     # Generate synthetic captures
     captures = synthesize_captures(
-        object_tensor, pupil_tensor, kx_batch, ky_batch, int(ratio_x)
+        object_tensor,
+        pupil_tensor,
+        illumination_kx,
+        illumination_ky,
+        int(ratio_x),
     )
 
     # Save to captures/ directory

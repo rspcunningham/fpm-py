@@ -17,7 +17,7 @@ NUM_AMPLITUDE_TERMS = 10
 
 # Optimization and runtime settings
 TORCH_DEVICE = "mps"  # Switch to "cpu" or "cuda".
-BATCH_SIZE = 16
+PATCH_BATCH_SIZE = 16
 EPOCHS = 200
 
 # Output directory
@@ -36,7 +36,7 @@ result = solve_study(
     pupil_num_amplitude_terms=NUM_AMPLITUDE_TERMS,
     epochs=EPOCHS,
     device=TORCH_DEVICE,
-    batch_size=BATCH_SIZE,
+    patch_batch_size=PATCH_BATCH_SIZE,
 )
 
 # Save reconstruction artifacts.
