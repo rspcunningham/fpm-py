@@ -4,8 +4,8 @@ import torch.nn.functional as F
 from jaxtyping import Float
 from torch import Tensor
 
-from ptych.core.forward import PtychographicForward
 from ptych.core.object import Object
+from ptych.core.physics import Physics
 from ptych.core.pupil import Pupil
 
 
@@ -17,7 +17,7 @@ def _radius_limits(radius_fraction: Tensor | float) -> tuple[float, float]:
     return 0.8 * float(radius.min()), 1.2 * float(radius.max())
 
 
-class InversePtychographyModel(nn.Module):
+class PtychographyModel(nn.Module):
     def __init__(
         self,
         captures: Float[Tensor, "T B n n"],
@@ -44,7 +44,7 @@ class InversePtychographyModel(nn.Module):
             num_tiles=num_tiles,
             radius_bounds=(min_radius, max_radius),
         )
-        self.image_formation = PtychographicForward(object_grid_size)
+        self.image_formation = Physics(object_grid_size)
         self.register_buffer("kx", kx_batch / object_to_capture_ratio)
         self.register_buffer("ky", ky_batch / object_to_capture_ratio)
 

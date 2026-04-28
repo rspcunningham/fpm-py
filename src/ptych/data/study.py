@@ -9,11 +9,12 @@ from jaxtyping import Float
 
 from ptych.data.parse import parse_manifest
 from ptych.data.preprocess import preprocess_study_data
-from ptych.data.types import StudyManifest
+from ptych.data.types import Capture, StudyManifest
 
 
 class PtychStudy:
     manifest: StudyManifest
+    capture_metadata: list[Capture]
     captures: Float[
         torch.Tensor, "B n n"
     ]  # [B, n, n] demosaiced, exposure-corrected single-channel float intensities normalized to max 1
@@ -27,11 +28,13 @@ class PtychStudy:
     def __init__(
         self,
         manifest: StudyManifest,
+        capture_metadata: list[Capture],
         captures: Float[torch.Tensor, "B n n"],
         kx_batch: Float[torch.Tensor, "B"],
         ky_batch: Float[torch.Tensor, "B"],
     ):
         self.manifest = manifest
+        self.capture_metadata = capture_metadata
         self.captures = captures
         self.kx_batch = kx_batch
         self.ky_batch = ky_batch
@@ -73,7 +76,7 @@ class PtychStudy:
             )
             raw_images.append(torch.from_numpy(np.array(img, dtype=np.float32)))
 
-        captures_tensor, kx_batch, ky_batch = preprocess_study_data(
+        capture_metadata, captures_tensor, kx_batch, ky_batch = preprocess_study_data(
             manifest,
             raw_images,
             crop_size=crop_size,
@@ -81,6 +84,7 @@ class PtychStudy:
 
         return cls(
             manifest=manifest,
+            capture_metadata=capture_metadata,
             captures=captures_tensor,
             kx_batch=kx_batch,
             ky_batch=ky_batch,

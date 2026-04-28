@@ -10,7 +10,7 @@ fft2 = cast(Callable[..., torch.Tensor], partial(torch.fft.fft2, norm="ortho"))
 ifft2 = cast(Callable[..., torch.Tensor], partial(torch.fft.ifft2, norm="ortho"))
 
 
-class PtychographicForward(nn.Module):
+class Physics(nn.Module):
     def __init__(self, object_grid_size: int) -> None:
         super().__init__()
         coords = torch.arange(object_grid_size, dtype=torch.get_default_dtype())

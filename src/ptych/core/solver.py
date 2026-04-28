@@ -7,16 +7,16 @@ from jaxtyping import Complex, Float
 from torch import Tensor
 from tqdm import tqdm
 
-from ptych.core.inverse import InversePtychographyModel
 from ptych.core.metrics import BatchMetricsRecord, InverseMetrics
+from ptych.core.model import PtychographyModel
 from ptych.core.pupil import radius_fraction_from_optics
 from ptych.data.study import PtychStudy
-from ptych.data.types import is_illuminated_capture
 
 
 @dataclass
 class StudySolveResult:
     object: Complex[Tensor, "N N"]
+    capture_0: Float[Tensor, "n n"]
     pupils: dict[tuple[int, int], Complex[Tensor, "N N"]]
     metrics: list[BatchMetricsRecord]
 
@@ -141,7 +141,7 @@ def _train_batch(
     InverseMetrics,
 ]:
     captures = captures.to(device)
-    model = InversePtychographyModel(
+    model = PtychographyModel(
         captures,
         kx.to(device),
         ky.to(device),
@@ -210,23 +210,19 @@ def solve_study(
     device: str | torch.device = "cpu",
     batch_size: int = 1,
 ) -> StudySolveResult:
-    captures = study.captures
-    kx = study.kx_batch
-    ky = study.ky_batch
-    pupil_capture = next(
-        capture
-        for capture in study.manifest.captures
-        if is_illuminated_capture(capture)
-    )
+
+    capture_0 = study.captures[0]
+    capture_0_metadata = study.capture_metadata[0]
+
     pupil_radius_fraction = radius_fraction_from_optics(
         numerical_aperture=study.manifest.numerical_aperture,
-        wavelength_m=pupil_capture.wavelength,
+        wavelength_m=capture_0_metadata.wavelength,
         sensor_pixel_size_m=study.manifest.sensor_pixel_size,
         magnification=study.manifest.magnification,
         object_to_capture_ratio=object_to_capture_ratio,
     )
 
-    _, height, width = captures.shape
+    _, height, width = study.captures.shape
     patches = [
         _Patch(y=y_patch, x=x_patch)
         for y_patch in _axis_patches(height, patch_size)
@@ -241,7 +237,7 @@ def solve_study(
         batch = patches[start : start + batch_size]
         batch_captures = torch.stack(
             [
-                captures[
+                study.captures[
                     :,
                     patch.y.start : patch.y.start + patch_size,
                     patch.x.start : patch.x.start + patch_size,
@@ -256,8 +252,8 @@ def solve_study(
             batch_metrics,
         ) = _train_batch(
             batch_captures,
-            kx,
-            ky,
+            study.kx_batch,
+            study.ky_batch,
             object_to_capture_ratio=object_to_capture_ratio,
             pupil_radius_fraction=pupil_radius_fraction,
             pupil_num_phase_terms=pupil_num_phase_terms,
@@ -295,6 +291,7 @@ def solve_study(
 
     return StudySolveResult(
         object=object_tensor,
+        capture_0=capture_0.detach().cpu(),
         pupils=pupils,
         metrics=metrics,
     )

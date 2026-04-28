@@ -46,5 +46,6 @@ save_metrics_summary(
 )
 
 np.save(OUTPUT_DIR / "object.npy", result.object.cpu().numpy())
+np.save(OUTPUT_DIR / "capture_0.npy", result.capture_0.cpu().numpy())
 print("Reconstruction complete!")
 print(f"Reconstructed object tensor: {result.object.shape}")

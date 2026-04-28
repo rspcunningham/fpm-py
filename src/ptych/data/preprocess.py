@@ -4,7 +4,7 @@ import torch
 from jaxtyping import Float
 
 from ptych.data.bayer import demosaic
-from ptych.data.types import StudyManifest, is_illuminated_capture
+from ptych.data.types import Capture, StudyManifest, is_illuminated_capture
 from ptych.data.utils import prepare_captures
 
 _RGB_REFERENCE_WAVELENGTHS_M = (
@@ -60,6 +60,7 @@ def preprocess_study_data(
     *,
     crop_size: int | None = None,
 ) -> tuple[
+    list[Capture],
     Float[torch.Tensor, "B n n"],
     Float[torch.Tensor, "B"],
     Float[torch.Tensor, "B"],
@@ -122,4 +123,4 @@ def preprocess_study_data(
             "Prepared captures must contain at least one positive intensity value"
         )
 
-    return captures_tensor / max_value, kx_batch, ky_batch
+    return valid_captures, captures_tensor / max_value, kx_batch, ky_batch
