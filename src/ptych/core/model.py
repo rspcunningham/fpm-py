@@ -4,8 +4,8 @@ import torch.nn.functional as F
 from jaxtyping import Float
 from torch import Tensor
 
-from ptych.core.object import Object
 from ptych.core.forward import FPMForwardModel
+from ptych.core.object import ObjectPriorX
 from ptych.core.pupil import Pupil
 
 
@@ -43,7 +43,15 @@ class PtychographyModel(nn.Module):
         )
 
         self.object_to_capture_ratio = object_to_capture_ratio
-        self.object = Object(measured_intensity_batch, object_to_capture_ratio)
+        # self.object = Object(measured_intensity_batch, object_to_capture_ratio)
+        self.object = ObjectPriorX(
+            measured_intensity_batch,
+            object_to_capture_ratio,
+            z_hw=(64, 64),
+            channels=(64, 64, 48, 32),
+            basis_channels=32,
+            kernel_size=3,
+        )
         self.pupil = Pupil(
             object_grid_size,
             num_phase_terms=pupil_num_phase_terms,

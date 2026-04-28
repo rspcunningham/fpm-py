@@ -159,8 +159,7 @@ def _train_batch(
 
     optimizer = torch.optim.AdamW(
         [
-            {"params": [model.object.amplitude], "lr": 1e-2},
-            {"params": [model.object.phase], "lr": 1e-1},
+            {"params": model.object.parameters(), "lr": 1e-2},
             {"params": model.pupil.parameters(), "lr": 1e-3},
         ]
     )
