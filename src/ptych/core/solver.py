@@ -15,33 +15,11 @@ from ptych.data.study import PtychStudy
 @dataclass
 class StudySolveResult:
     reconstruction: Float[Tensor, "N N"]
+    raw_object: Complex[Tensor, "N N"]
     raw_object_amplitude: Float[Tensor, "N N"]
     raw_object_phase: Float[Tensor, "N N"]
     pupils: dict[tuple[int, int], Complex[Tensor, "N N"]]
     metrics: list[BatchMetricsRecord]
-
-
-@dataclass(frozen=True)
-class CaptureRegion:
-    x_left: int
-    x_right: int
-    y_top: int
-    y_bottom: int
-
-    @classmethod
-    def centered_square(cls, *, width: int, height: int, size: int) -> CaptureRegion:
-        if size > width or size > height:
-            raise ValueError(
-                f"Centered square size ({size}) exceeds capture dimensions ({height}x{width})"
-            )
-        x_left = (width - size) // 2
-        y_top = (height - size) // 2
-        return cls(
-            x_left=x_left,
-            x_right=x_left + size,
-            y_top=y_top,
-            y_bottom=y_top + size,
-        )
 
 
 @dataclass(frozen=True)
@@ -70,6 +48,7 @@ class _PatchCrop:
 class _SolvedBatch:
     patches: list[_Patch]
     reconstruction: Float[Tensor, "P N N"]
+    raw_object: Complex[Tensor, "P N N"]
     raw_object_amplitude: Float[Tensor, "P N N"]
     raw_object_phase: Float[Tensor, "P N N"]
 
@@ -119,15 +98,18 @@ def _patch_crop(patch: _Patch, object_to_capture_ratio: int) -> _PatchCrop:
 
 
 def _stitch_patch_field(
-    patch_tensors: list[tuple[list[_Patch], Float[Tensor, "P N N"]]],
+    patch_tensors: list[tuple[list[_Patch], Tensor]],
     *,
     height: int,
     width: int,
     object_to_capture_ratio: int,
-) -> Float[Tensor, "N N"]:
+) -> Tensor:
+    first_tensor = patch_tensors[0][1]
     stitched = torch.zeros(
         height * object_to_capture_ratio,
         width * object_to_capture_ratio,
+        dtype=first_tensor.dtype,
+        device=first_tensor.device,
     )
 
     for patches, tensors in patch_tensors:
@@ -222,7 +204,6 @@ def _train_batch(
 def solve_study(
     study: PtychStudy,
     *,
-    capture_region: CaptureRegion,
     patch_size: int,
     pupil_radius_fraction: Tensor | float,
     object_to_capture_ratio: int = 4,
@@ -232,11 +213,7 @@ def solve_study(
     device: str | torch.device = "cpu",
     batch_size: int = 1,
 ) -> StudySolveResult:
-    captures = study.captures[
-        :,
-        capture_region.y_top : capture_region.y_bottom,
-        capture_region.x_left : capture_region.x_right,
-    ]
+    captures = study.captures
     kx = study.kx_batch
     ky = study.ky_batch
 
@@ -285,6 +262,7 @@ def solve_study(
             _SolvedBatch(
                 patches=batch,
                 reconstruction=objects.abs().square(),
+                raw_object=objects,
                 raw_object_amplitude=raw_object_amplitudes,
                 raw_object_phase=raw_object_phases,
             )
@@ -308,6 +286,10 @@ def solve_study(
         [(batch.patches, batch.reconstruction) for batch in solved_batches],
         **stitch_kwargs,
     )
+    raw_object = _stitch_patch_field(
+        [(batch.patches, batch.raw_object) for batch in solved_batches],
+        **stitch_kwargs,
+    )
     raw_object_amplitude = _stitch_patch_field(
         [(batch.patches, batch.raw_object_amplitude) for batch in solved_batches],
         **stitch_kwargs,
@@ -319,6 +301,7 @@ def solve_study(
 
     return StudySolveResult(
         reconstruction=reconstruction,
+        raw_object=raw_object,
         raw_object_amplitude=raw_object_amplitude,
         raw_object_phase=raw_object_phase,
         pupils=pupils,

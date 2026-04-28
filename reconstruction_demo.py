@@ -4,12 +4,8 @@ from preview_utils import save_metrics_summary, save_tensor
 from ptych import CaptureRegion, PtychStudy, solve_study
 from ptych.core.pupil import radius_fraction_from_optics
 from ptych.data.types import is_illuminated_capture
-from ptych.preview import render_scalar_preview_png
 
 dataset = "usaf-test-dark"
-
-# Load dataset from nextcloud storage
-study = PtychStudy.load(dataset)
 
 # Reconstruction geometry settings
 PATCH_SIZE = 256
@@ -31,6 +27,14 @@ EPOCHS = 200
 OUTPUT_DIR = Path(f"results/{dataset}")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
+full_study = PtychStudy.load(dataset)
+capture_region = CaptureRegion.centered_square(
+    width=full_study.manifest.capture_dimensions.width,
+    height=full_study.manifest.capture_dimensions.height,
+    size=CROP_SIZE,
+)
+study = PtychStudy.load(dataset, crop=capture_region)
+
 # Prepare the initial pupil guess.
 study_wavelength = next(
     capture for capture in study.manifest.captures if is_illuminated_capture(capture)
@@ -44,16 +48,9 @@ pupil_radius_fraction = radius_fraction_from_optics(
     object_to_capture_ratio=OBJECT_TO_CAPTURE_RATIO,
 )
 
-capture_region = CaptureRegion.centered_square(
-    width=study.captures.shape[2],
-    height=study.captures.shape[1],
-    size=CROP_SIZE,
-)
-
 # Run reconstruction.
 result = solve_study(
     study,
-    capture_region=capture_region,
     patch_size=PATCH_SIZE,
     object_to_capture_ratio=OBJECT_TO_CAPTURE_RATIO,
     pupil_radius_fraction=pupil_radius_fraction,
@@ -71,23 +68,9 @@ save_metrics_summary(
 )
 
 reconstruction = result.reconstruction
-save_tensor(reconstruction, OUTPUT_DIR / "reconstruction.npy")
-save_tensor(result.raw_object_amplitude, OUTPUT_DIR / "raw_object_amplitude.npy")
-save_tensor(result.raw_object_phase, OUTPUT_DIR / "raw_object_phase.npy")
+save_tensor(study.captures[0], OUTPUT_DIR / "capture_0.npy")
+save_tensor(result.raw_object, OUTPUT_DIR / "raw_object.npy")
 
-render_scalar_preview_png(
-    reconstruction,
-    path=OUTPUT_DIR / "reconstruction.png",
-)
-render_scalar_preview_png(
-    result.raw_object_amplitude,
-    path=OUTPUT_DIR / "raw_object_amplitude.png",
-)
-render_scalar_preview_png(
-    result.raw_object_phase,
-    path=OUTPUT_DIR / "raw_object_phase.png",
-)
 print(f"Reconstruction tensor: {result.reconstruction.shape}")
-print(f"Raw object amplitude tensor: {result.raw_object_amplitude.shape}")
-print(f"Raw object phase tensor: {result.raw_object_phase.shape}")
+print(f"Raw object tensor: {result.raw_object.shape} {result.raw_object.dtype}")
 print(f"Stitched result shape: {reconstruction.shape}")

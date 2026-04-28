@@ -13,9 +13,9 @@ import numpy.typing as npt
 import torch
 from jaxtyping import Float
 
+from ptych.data.region import CaptureRegion
 from ptych.data.study import PtychStudy
 from ptych.data.types import Capture, is_illuminated_capture
-from ptych.core.solver import CaptureRegion
 
 type ObjectPreviewMode = Literal["intensity", "amplitude", "phase"]
 
@@ -53,15 +53,7 @@ def _crop_capture_channels(
 ) -> torch.Tensor:
     height = capture.shape[-2]
     width = capture.shape[-1]
-
-    if region.x_left < 0 or region.y_top < 0:
-        raise ValueError(f"Capture region has negative bounds: {region}")
-    if region.x_right > width or region.y_bottom > height:
-        raise ValueError(
-            f"Capture region {region} exceeds capture dimensions ({height}x{width})"
-        )
-    if region.x_left >= region.x_right or region.y_top >= region.y_bottom:
-        raise ValueError(f"Capture region must have positive width and height: {region}")
+    region.validate(width=width, height=height)
 
     return capture[..., region.y_top:region.y_bottom, region.x_left:region.x_right]
 

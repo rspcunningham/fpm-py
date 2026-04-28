@@ -1,9 +1,9 @@
 from ptych.core import InversePtychographyModel, Object, forward_model
 from ptych.core.solver import (
-    CaptureRegion,
     StudySolveResult,
     solve_study,
 )
+from ptych.data.region import CaptureRegion
 from ptych.data.study import PtychStudy
 
 __all__ = [

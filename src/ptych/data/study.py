@@ -8,6 +8,7 @@ import torch
 from jaxtyping import Float
 
 from ptych.data.bayer import demosaic
+from ptych.data.region import CaptureRegion
 from ptych.data.types import StudyManifest, is_illuminated_capture
 from ptych.data.parse import parse_manifest
 from ptych.data.utils import prepare_captures
@@ -35,6 +36,16 @@ def _capture_exposure_ms(capture_index: int, exposure_ms: float | None) -> float
     return exposure_ms
 
 
+def _crop_captures(
+    captures: Float[torch.Tensor, "B H W"],
+    crop: CaptureRegion,
+) -> Float[torch.Tensor, "B H W"]:
+    height = captures.shape[-2]
+    width = captures.shape[-1]
+    crop.validate(width=width, height=height)
+    return captures[:, crop.y_top : crop.y_bottom, crop.x_left : crop.x_right]
+
+
 class PtychStudy:
     manifest: StudyManifest
     captures: Float[torch.Tensor, "B n n"] # [B, n, n] demosaiced, exposure-corrected single-channel float intensities normalized to max 1
@@ -54,7 +65,12 @@ class PtychStudy:
         self.ky_batch = ky_batch
 
     @classmethod
-    def from_disk(cls, dir_path: str | Path) -> 'PtychStudy':
+    def from_disk(
+        cls,
+        dir_path: str | Path,
+        *,
+        crop: CaptureRegion | None = None,
+    ) -> 'PtychStudy':
         dir_path = Path(dir_path)
 
         # Load and parse manifest
@@ -124,6 +140,8 @@ class PtychStudy:
         if max_value <= 0:
             raise ValueError("Prepared captures must contain at least one positive intensity value")
         captures_tensor = captures_tensor / max_value
+        if crop is not None:
+            captures_tensor = _crop_captures(captures_tensor, crop)
 
         return cls(
             manifest=manifest,
@@ -133,12 +151,17 @@ class PtychStudy:
         )
 
     @classmethod
-    def load(cls, dataset: str | Path) -> 'PtychStudy':
+    def load(
+        cls,
+        dataset: str | Path,
+        *,
+        crop: CaptureRegion | None = None,
+    ) -> 'PtychStudy':
         candidate_path = Path(dataset)
         if candidate_path.exists():
-            return cls.from_disk(candidate_path)
+            return cls.from_disk(candidate_path, crop=crop)
 
         from ptych.data.download.dataset_cache import NextcloudDatasetCache
 
         cache = NextcloudDatasetCache()
-        return cls.from_disk(cache.fetch_dataset(str(dataset)))
+        return cls.from_disk(cache.fetch_dataset(str(dataset)), crop=crop)
