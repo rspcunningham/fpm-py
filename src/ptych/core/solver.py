@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 from ptych.core.metrics import BatchMetricsRecord, InverseMetrics
 from ptych.core.model import PtychographyModel
-from ptych.core.pupil import radius_fraction_from_optics
+from ptych.core.pupil import pupil_cutoff_cyc_per_px_from_optics
 from ptych.data.study import PtychStudy
 
 
@@ -125,14 +125,14 @@ def _stitch_patch_field(
 
 
 def _train_batch(
-    captures: Float[Tensor, "P B n n"],
+    measured_intensities: Float[Tensor, "P B n n"],
     kx: Float[Tensor, "B"],
     ky: Float[Tensor, "B"],
     *,
     object_to_capture_ratio: int,
-    pupil_radius_fraction: Tensor | float,
+    pupil_cutoff_cyc_per_px: Tensor | float,
     pupil_num_phase_terms: int,
-    pupil_num_amp_terms: int,
+    pupil_num_amplitude_terms: int,
     epochs: int,
     device: str | torch.device,
 ) -> tuple[
@@ -140,15 +140,15 @@ def _train_batch(
     Complex[Tensor, "P N N"],
     InverseMetrics,
 ]:
-    captures = captures.to(device)
+    measured_intensities = measured_intensities.to(device)
     model = PtychographyModel(
-        captures,
+        measured_intensities,
         kx.to(device),
         ky.to(device),
         object_to_capture_ratio=object_to_capture_ratio,
-        pupil_radius_fraction_init=pupil_radius_fraction,
+        pupil_cutoff_cyc_per_px_init=pupil_cutoff_cyc_per_px,
         pupil_num_phase_terms=pupil_num_phase_terms,
-        pupil_num_amp_terms=pupil_num_amp_terms,
+        pupil_num_amplitude_terms=pupil_num_amplitude_terms,
     ).to(device)
     model.train()
 
@@ -165,18 +165,23 @@ def _train_batch(
         ]
     )
 
-    num_patches, num_captures, _, _ = captures.shape
-    loss_history = captures.new_zeros(epochs)
-    patch_loss_history = captures.new_zeros(epochs, num_patches)
-    capture_loss_history = captures.new_zeros(epochs, num_captures)
+    num_patches, num_illuminations, _, _ = measured_intensities.shape
+    loss_history = measured_intensities.new_zeros(epochs)
+    patch_loss_history = measured_intensities.new_zeros(epochs, num_patches)
+    illumination_loss_history = measured_intensities.new_zeros(
+        epochs,
+        num_illuminations,
+    )
 
     for epoch in tqdm(range(epochs), desc="Solving inverse model..."):
-        predicted = model()
-        residual = torch.sqrt(predicted + 1e-8) - torch.sqrt(captures + 1e-8)
-        squared_residual = residual.square()
-        patch_loss = squared_residual.mean(dim=(1, 2, 3))
+        predicted_intensities = model()
+        intensity_residual = torch.sqrt(predicted_intensities + 1e-8) - torch.sqrt(
+            measured_intensities + 1e-8
+        )
+        squared_intensity_residual = intensity_residual.square()
+        patch_loss = squared_intensity_residual.mean(dim=(1, 2, 3))
         loss = patch_loss.sum()
-        capture_loss = squared_residual.mean(dim=(0, 2, 3))
+        illumination_loss = squared_intensity_residual.mean(dim=(0, 2, 3))
 
         optimizer.zero_grad(set_to_none=True)
         loss.backward()
@@ -184,12 +189,12 @@ def _train_batch(
 
         loss_history[epoch] = loss.detach()
         patch_loss_history[epoch] = patch_loss.detach()
-        capture_loss_history[epoch] = capture_loss.detach()
+        illumination_loss_history[epoch] = illumination_loss.detach()
 
     metrics: InverseMetrics = {
         "loss": loss_history.cpu().tolist(),
         "patch_loss": patch_loss_history.cpu().tolist(),
-        "capture_loss": capture_loss_history.cpu().tolist(),
+        "illumination_loss": illumination_loss_history.cpu().tolist(),
     }
     with torch.no_grad():
         return (
@@ -205,7 +210,7 @@ def solve_study(
     patch_size: int,
     object_to_capture_ratio: int = 4,
     pupil_num_phase_terms: int = 5,
-    pupil_num_amp_terms: int = 1,
+    pupil_num_amplitude_terms: int = 1,
     epochs: int = 1000,
     device: str | torch.device = "cpu",
     batch_size: int = 1,
@@ -214,7 +219,7 @@ def solve_study(
     capture_0 = study.captures[0]
     capture_0_metadata = study.capture_metadata[0]
 
-    pupil_radius_fraction = radius_fraction_from_optics(
+    pupil_cutoff_cyc_per_px = pupil_cutoff_cyc_per_px_from_optics(
         numerical_aperture=study.manifest.numerical_aperture,
         wavelength_m=capture_0_metadata.wavelength,
         sensor_pixel_size_m=study.manifest.sensor_pixel_size,
@@ -235,7 +240,7 @@ def solve_study(
 
     for start in range(0, len(patches), batch_size):
         batch = patches[start : start + batch_size]
-        batch_captures = torch.stack(
+        batch_measured_intensities = torch.stack(
             [
                 study.captures[
                     :,
@@ -251,13 +256,13 @@ def solve_study(
             batch_pupils,
             batch_metrics,
         ) = _train_batch(
-            batch_captures,
+            batch_measured_intensities,
             study.kx_batch,
             study.ky_batch,
             object_to_capture_ratio=object_to_capture_ratio,
-            pupil_radius_fraction=pupil_radius_fraction,
+            pupil_cutoff_cyc_per_px=pupil_cutoff_cyc_per_px,
             pupil_num_phase_terms=pupil_num_phase_terms,
-            pupil_num_amp_terms=pupil_num_amp_terms,
+            pupil_num_amplitude_terms=pupil_num_amplitude_terms,
             epochs=epochs,
             device=device,
         )

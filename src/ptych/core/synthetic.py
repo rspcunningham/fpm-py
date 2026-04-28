@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 from jaxtyping import Complex, Float
 
-from ptych.core.forward import PtychographicForward
+from ptych.core.physics import FPMForwardModel
 
 
 def synthesize_captures(
@@ -30,22 +30,23 @@ def synthesize_captures(
     ky_batch = ky_batch / object_to_capture_ratio
 
     # Run forward model at full resolution (add T=1 batch dim)
-    image_formation = PtychographicForward(object_tensor.shape[-1]).to(
-        object_tensor.device
-    )
-    intensities = image_formation(
+    forward_model = FPMForwardModel(object_tensor.shape[-1]).to(object_tensor.device)
+    predicted_intensities = forward_model(
         object_tensor[None],
         pupil_tensor[None],
         kx_batch,
         ky_batch,
     )  # [1, B, N, N]
-    intensities = intensities.squeeze(0)  # [B, N, N]
+    predicted_intensities = predicted_intensities.squeeze(0)  # [B, N, N]
 
     # Reduce full-resolution intensities to the capture grid with average pooling
     if object_to_capture_ratio > 1:
         # Add channel dimension for avg_pool2d: [B, 1, N, N]
-        intensities = intensities.unsqueeze(1)
-        intensities = F.avg_pool2d(intensities, kernel_size=object_to_capture_ratio)
-        intensities = intensities.squeeze(1)  # [B, n, n]
+        predicted_intensities = predicted_intensities.unsqueeze(1)
+        predicted_intensities = F.avg_pool2d(
+            predicted_intensities,
+            kernel_size=object_to_capture_ratio,
+        )
+        predicted_intensities = predicted_intensities.squeeze(1)  # [B, n, n]
 
-    return intensities
+    return predicted_intensities

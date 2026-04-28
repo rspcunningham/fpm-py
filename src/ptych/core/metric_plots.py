@@ -22,7 +22,7 @@ def save_metrics_summary(
     fig, axes = cast(
         tuple[Figure, tuple[Axes, Axes]], plt.subplots(1, 2, figsize=(14, 5))
     )
-    ax_loss, ax_capture = axes
+    ax_loss, ax_illumination = axes
 
     for batch_idx, record in enumerate(metrics):
         patches = record["patches"]
@@ -37,8 +37,8 @@ def save_metrics_summary(
             batch_metrics["patch_loss"],
             dtype=np.float32,
         )
-        capture_loss: FloatArray = np.asarray(
-            batch_metrics["capture_loss"], dtype=np.float32
+        illumination_loss: FloatArray = np.asarray(
+            batch_metrics["illumination_loss"], dtype=np.float32
         )
         epochs = np.arange(len(loss))
         batch_label = f"batch {batch_idx + 1}"
@@ -57,20 +57,26 @@ def save_metrics_summary(
             )
             ax_loss.plot(epochs, patch_loss_log, label=f"patch ({r},{c})", alpha=0.9)
 
-        final_capture: FloatArray = np.asarray(capture_loss[-1], dtype=np.float32)
-        capture_indices = np.arange(final_capture.shape[0], dtype=np.int32)
-        ax_capture.plot(capture_indices, final_capture, label=batch_label)
+        final_illumination: FloatArray = np.asarray(
+            illumination_loss[-1], dtype=np.float32
+        )
+        illumination_indices = np.arange(final_illumination.shape[0], dtype=np.int32)
+        ax_illumination.plot(
+            illumination_indices,
+            final_illumination,
+            label=batch_label,
+        )
 
     ax_loss.set_title("Log Loss by Epoch")
     ax_loss.set_xlabel("Epoch")
     ax_loss.set_ylabel("log10(loss)")
     ax_loss.legend(ncol=2, fontsize="small")
 
-    ax_capture.set_title("Final Capture Loss")
-    ax_capture.set_xlabel("Capture index")
-    ax_capture.set_ylabel("Loss")
+    ax_illumination.set_title("Final Illumination Loss")
+    ax_illumination.set_xlabel("Illumination index")
+    ax_illumination.set_ylabel("Loss")
     if len(metrics) > 1:
-        ax_capture.legend()
+        ax_illumination.legend()
 
     plt.tight_layout()
     plt.savefig(path, dpi=150)

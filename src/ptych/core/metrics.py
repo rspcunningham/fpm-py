@@ -10,7 +10,7 @@ type PatchCoord = tuple[int, int]
 class InverseMetrics(TypedDict):
     loss: list[float]
     patch_loss: list[list[float]]
-    capture_loss: list[list[float]]
+    illumination_loss: list[list[float]]
 
 
 class BatchMetricsRecord(TypedDict):

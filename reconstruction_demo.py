@@ -13,7 +13,7 @@ CROP_SIZE = 256
 
 OBJECT_TO_CAPTURE_RATIO = 4
 NUM_PHASE_TERMS = 10
-NUM_AMP_TERMS = 10
+NUM_AMPLITUDE_TERMS = 10
 
 # Optimization and runtime settings
 TORCH_DEVICE = "mps"  # Switch to "cpu" or "cuda".
@@ -33,7 +33,7 @@ result = solve_study(
     patch_size=PATCH_SIZE,
     object_to_capture_ratio=OBJECT_TO_CAPTURE_RATIO,
     pupil_num_phase_terms=NUM_PHASE_TERMS,
-    pupil_num_amp_terms=NUM_AMP_TERMS,
+    pupil_num_amplitude_terms=NUM_AMPLITUDE_TERMS,
     epochs=EPOCHS,
     device=TORCH_DEVICE,
     batch_size=BATCH_SIZE,

@@ -1,15 +1,20 @@
-from ptych.core.forward import PtychographicForward
-from ptych.core.inverse import InversePtychographyModel
+from ptych.core.model import PtychographyModel
 from ptych.core.object import Object
+from ptych.core.physics import FPMForwardModel
+from ptych.core.pupil import Pupil, pupil_cutoff_cyc_per_px_from_optics
 from ptych.core.solver import (
     StudySolveResult,
     solve_study,
 )
+from ptych.core.synthetic import synthesize_captures
 
 __all__ = [
-    "InversePtychographyModel",
+    "FPMForwardModel",
     "Object",
-    "PtychographicForward",
+    "PtychographyModel",
+    "Pupil",
     "StudySolveResult",
+    "pupil_cutoff_cyc_per_px_from_optics",
     "solve_study",
+    "synthesize_captures",
 ]

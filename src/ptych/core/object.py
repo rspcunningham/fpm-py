@@ -8,12 +8,12 @@ from torch import Tensor
 class Object(nn.Module):
     def __init__(
         self,
-        captures: Float[Tensor, "T B n n"],
+        measured_intensities: Float[Tensor, "T B n n"],
         object_to_capture_ratio: int,
     ) -> None:
         super().__init__()
         init_amp = F.interpolate(
-            captures[:, 0].unsqueeze(1),
+            measured_intensities[:, 0].unsqueeze(1),
             scale_factor=object_to_capture_ratio,
             mode="nearest",
         ).squeeze(1)

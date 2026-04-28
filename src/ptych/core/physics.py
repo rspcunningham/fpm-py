@@ -10,7 +10,7 @@ fft2 = cast(Callable[..., torch.Tensor], partial(torch.fft.fft2, norm="ortho"))
 ifft2 = cast(Callable[..., torch.Tensor], partial(torch.fft.ifft2, norm="ortho"))
 
 
-class Physics(nn.Module):
+class FPMForwardModel(nn.Module):
     def __init__(self, object_grid_size: int) -> None:
         super().__init__()
         coords = torch.arange(object_grid_size, dtype=torch.get_default_dtype())
@@ -47,4 +47,5 @@ class Physics(nn.Module):
         objects_fourier = fft2(tilted_objects)
         filtered_fourier = pupil_tensor[:, None] * objects_fourier
         complex_image_fields = ifft2(filtered_fourier)
-        return torch.abs(complex_image_fields) ** 2
+        predicted_intensities = torch.abs(complex_image_fields) ** 2
+        return predicted_intensities

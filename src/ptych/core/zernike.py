@@ -37,7 +37,7 @@ def _radial_terms(n: int, m_abs: int) -> tuple[list[float], list[int]]:
 def zernike_basis_tensors(
     object_grid_size: int,
     num_phase_terms: int,
-    num_amp_terms: int,
+    num_amplitude_terms: int,
 ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
     coords = torch.arange(object_grid_size, dtype=torch.get_default_dtype())
     coords = torch.where(
@@ -47,7 +47,7 @@ def zernike_basis_tensors(
     rho_pixels = torch.sqrt(grid_x**2 + grid_y**2)
     theta = torch.atan2(grid_y, grid_x)
 
-    max_terms = max(num_phase_terms, num_amp_terms)
+    max_terms = max(num_phase_terms, num_amplitude_terms)
     angular_parts: list[Tensor] = []
     radial_coeffs: list[list[float]] = []
     radial_powers: list[list[int]] = []

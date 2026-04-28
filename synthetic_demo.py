@@ -9,7 +9,7 @@ from PIL import Image
 
 from ptych import PtychStudy
 from ptych.data.synthetic import generate_synthetic_study
-from ptych.core.pupil import Pupil, radius_fraction_from_optics
+from ptych.core.pupil import Pupil, pupil_cutoff_cyc_per_px_from_optics
 from ptych.data.types import is_illuminated_capture
 
 IDEAL_IMAGE_PATH = Path("demo_images/ideal.png")
@@ -63,7 +63,7 @@ pupil_capture = next(
 )
 pupil_params = Pupil(
     object_grid_size=N,
-    radius_fraction=radius_fraction_from_optics(
+    pupil_cutoff_cyc_per_px=pupil_cutoff_cyc_per_px_from_optics(
         numerical_aperture=synthetic_manifest.numerical_aperture,
         wavelength_m=pupil_capture.wavelength,
         sensor_pixel_size_m=synthetic_manifest.sensor_pixel_size,
