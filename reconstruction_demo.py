@@ -21,7 +21,7 @@ PATCH_BATCH_SIZE = 16
 EPOCHS = 200
 
 # Output directory
-OUTPUT_DIR = Path(f"results/{dataset}-object-x")
+OUTPUT_DIR = Path(f"results/{dataset}")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Load only the reconstruction crop from the cached dataset.
