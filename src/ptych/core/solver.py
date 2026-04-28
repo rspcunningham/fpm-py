@@ -161,6 +161,7 @@ def _train_batch(
         [
             {"params": model.object.parameters(), "lr": 1e-2},
             {"params": model.pupil.parameters(), "lr": 1e-3},
+            {"params": model.illumination_gains.parameters(), "lr": 1e-2},
         ]
     )
 
