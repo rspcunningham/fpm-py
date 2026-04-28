@@ -3,6 +3,7 @@
 __pycache__
 .claude
 .vscode
+.ruff_cache
 
 # Build artifacts
 *.egg-info/
@@ -11,11 +12,6 @@ build/
 *.pyc
 *.pyo
 
-tmp/
-.DS_Store
-
-demo/real/output*
-demo/synthetic/output
-demo/synthetic/captures
-
 results/
+
+.DS_Store

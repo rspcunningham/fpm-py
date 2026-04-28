@@ -86,6 +86,7 @@ class StudyManifest:
         study_id: Unique identifier for this study.
         created_at: Timestamp when the study was created.
         magnification: Objective magnification factor (e.g., 4.0 for 4x).
+        numerical_aperture: Objective numerical aperture.
         sensor_pixel_size: Physical size of sensor pixels in meters.
         capture_dimensions: Pixel dimensions of all capture images.
         captures: List of captured images. Illuminated captures carry wavelength;
@@ -97,6 +98,7 @@ class StudyManifest:
     study_id: UUID
     created_at: datetime
     magnification: float
+    numerical_aperture: float
     sensor_pixel_size: float
     capture_dimensions: CaptureDimensions
     captures: list[ManifestCapture]

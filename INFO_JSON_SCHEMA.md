@@ -6,7 +6,7 @@ This document describes the schema for `info.json` files, which store `StudyMani
 
 The `info.json` file is the manifest for a Fourier ptychography study. It contains metadata about the optical system, along with a list of captures—each capture representing a single image taken with specific illumination parameters.
 
-**Note:** Darkfield images (captures with no LED positions), multiplexed images (captures with multiple LEDs on simultaneously), and captures at different wavelengths are supported in the schema but not yet processed. When loading, darkfield images will be skipped with a warning; multiplexed images or multiple wavelengths in the same study will raise an error. 
+**Note:** Darkfield images are represented as captures with no LED positions and are used for dark-frame subtraction during preprocessing. Multiplexed images (captures with multiple LEDs on simultaneously) and captures at different wavelengths are supported in the schema but not yet processed; loading them for reconstruction will raise an error.
 
 ## Units
 
@@ -18,6 +18,7 @@ All physical measurements use SI units:
 | Wavelength | meters (m) |
 | Sensor pixel size | meters (m) |
 | Exposure | milliseconds (ms) |
+| Numerical aperture | dimensionless |
 
 Numeric values can be written as decimals (e.g., `0.000000625`) or in scientific notation (e.g., `6.25e-7`). Both formats are parsed correctly.
 
@@ -40,9 +41,10 @@ Formally, this follows the left-hand rule with the Z-axis pointing from sample t
 | `study_id` | string (UUID) | Yes | Unique identifier for this study. Must be a valid UUID v4 format. |
 | `created_at` | string (ISO 8601) | Yes | Timestamp when the study was created. Format: `YYYY-MM-DDTHH:MM:SS` or `YYYY-MM-DDTHH:MM:SS.mmm` |
 | `magnification` | number | Yes | Objective magnification factor (e.g., `4` for 4x, `10` for 10x). |
+| `numerical_aperture` | number | Yes | Estimated objective numerical aperture. This is a property of the capture hardware, not a reconstruction runtime setting. It is used to initialize the pupil radius and does not need to be absolutely precise. |
 | `sensor_pixel_size` | number | Yes | Physical size of sensor pixels in **meters**. |
 | `capture_dimensions` | object | Yes | Dimensions of all capture images in pixels. See `CaptureDimensions` below. |
-| `captures` | array | Yes | List of `Capture` objects (see below). |
+| `captures` | array | Yes | List of illuminated `Capture` or darkfield capture objects (see below). |
 | `version` | string | No | Schema version. Defaults to `"1.0"` if omitted. |
 | `metadata` | object | No | Arbitrary user-defined metadata (key-value pairs). |
 
@@ -53,8 +55,8 @@ Each capture represents a single image acquired with specific illumination.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `filename` | string | Yes | Basename of the image file (e.g., `"im_0.npy"`). Files are stored in the `captures/` subdirectory. Must be a `.npy` file (NumPy array). |
-| `wavelength` | number | Yes | Captured (ie. what the sensor measured) wavelength in **meters**. |
-| `led_positions` | array | Yes | Array of `LedPosition` objects. Typically contains one element per capture. An empty array indicates a darkfield image (no illumination). |
+| `wavelength` | number | Illuminated captures only | Captured (ie. what the sensor measured) wavelength in **meters**. Omit this for darkfield captures. |
+| `led_positions` | array | Yes | Array of `LedPosition` objects. Typically contains one element per illuminated capture. An empty array indicates a darkfield image (no illumination). |
 | `captured_at` | string (ISO 8601) | No | Timestamp when the image was captured. Format: `YYYY-MM-DDTHH:MM:SS` or `YYYY-MM-DDTHH:MM:SS.mmm` |
 | `exposure` | number | No | Exposure time in **milliseconds**. |
 
@@ -93,11 +95,11 @@ All image files must be:
     "study_id": "550e8400-e29b-41d4-a716-446655440000",
     "created_at": "2025-01-14T10:30:00.000",
     "magnification": 10,
+    "numerical_aperture": 0.25,
     "sensor_pixel_size": 0.00000167,
     "capture_dimensions": {"width": 2048, "height": 2048},
     "version": "1.0",
     "metadata": {
-        "objective_na": 0.25,
         "camera_model": "FLIR BFS-U3-50S5C",
         "notes": "Test acquisition with USAF target"
     },
@@ -182,7 +184,6 @@ All image files must be:
         },
         {
             "filename": "darkfield_0.npy",
-            "wavelength": 6.25e-7,
             "captured_at": "2025-01-14T10:30:01.503",
             "exposure": 50,
             "led_positions": []
@@ -200,3 +201,4 @@ When creating `info.json` files programmatically:
 3. **captures**: Must contain at least one capture
 4. **led_positions**: Must be an array. Use an empty array `[]` for darkfield images (no illumination). For standard captures, typically contains one LED position
 5. **wavelength**: Common values are approximately `4.7e-7` (blue), `5.3e-7` (green), `6.25e-7` (red)
+6. **numerical_aperture**: Estimated objective NA for the capture hardware, for example `0.13` or `0.25`. This initializes the pupil radius; it does not need to be absolutely precise.

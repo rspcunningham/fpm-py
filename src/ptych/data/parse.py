@@ -127,6 +127,7 @@ def manifest_to_dict(manifest: StudyManifest) -> dict[str, object]:
         "created_at": manifest.created_at.isoformat(),
         "version": manifest.version,
         "magnification": manifest.magnification,
+        "numerical_aperture": manifest.numerical_aperture,
         "sensor_pixel_size": manifest.sensor_pixel_size,
         "capture_dimensions": {
             "width": manifest.capture_dimensions.width,
@@ -223,6 +224,7 @@ def parse_manifest(data: dict[str, object]) -> StudyManifest:
         study_id=UUID(_require_str(data, "study_id")),
         created_at=datetime.fromisoformat(_require_str(data, "created_at")),
         magnification=_require_num(data, "magnification"),
+        numerical_aperture=_require_num(data, "numerical_aperture"),
         sensor_pixel_size=_require_num(data, "sensor_pixel_size"),
         capture_dimensions=capture_dimensions,
         captures=captures,

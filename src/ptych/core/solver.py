@@ -9,7 +9,9 @@ from tqdm import tqdm
 
 from ptych.core.inverse import InversePtychographyModel
 from ptych.core.metrics import BatchMetricsRecord, InverseMetrics
+from ptych.core.pupil import radius_fraction_from_optics
 from ptych.data.study import PtychStudy
+from ptych.data.types import is_illuminated_capture
 
 
 @dataclass
@@ -201,7 +203,6 @@ def solve_study(
     study: PtychStudy,
     *,
     patch_size: int,
-    pupil_radius_fraction: Tensor | float,
     object_to_capture_ratio: int = 4,
     pupil_num_phase_terms: int = 5,
     pupil_num_amp_terms: int = 1,
@@ -212,6 +213,18 @@ def solve_study(
     captures = study.captures
     kx = study.kx_batch
     ky = study.ky_batch
+    pupil_capture = next(
+        capture
+        for capture in study.manifest.captures
+        if is_illuminated_capture(capture)
+    )
+    pupil_radius_fraction = radius_fraction_from_optics(
+        numerical_aperture=study.manifest.numerical_aperture,
+        wavelength_m=pupil_capture.wavelength,
+        sensor_pixel_size_m=study.manifest.sensor_pixel_size,
+        magnification=study.manifest.magnification,
+        object_to_capture_ratio=object_to_capture_ratio,
+    )
 
     _, height, width = captures.shape
     patches = [
