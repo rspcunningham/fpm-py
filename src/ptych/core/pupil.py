@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from jaxtyping import Complex
 from torch import Tensor
 
-from ptych.core.zernike import zernike_basis_tensors
+from ptych.core.zernike import zernike_basis_tensors, zernike_num_terms
 
 
 def _radius_logit(
@@ -39,8 +39,8 @@ class Pupil(nn.Module):
     def __init__(
         self,
         object_grid_size: int,
-        num_phase_terms: int = 21,
-        num_amplitude_terms: int = 11,
+        phase_radial_order: int = 2,
+        amplitude_radial_order: int = 0,
         *,
         phase_coeffs: Tensor | None = None,
         raw_amplitude_coeffs: Tensor | None = None,
@@ -51,7 +51,11 @@ class Pupil(nn.Module):
     ) -> None:
         super().__init__()
         patch_batch_size = patch_batch_size or 1
+        num_phase_terms = zernike_num_terms(phase_radial_order)
+        num_amplitude_terms = zernike_num_terms(amplitude_radial_order)
         self.object_grid_size = object_grid_size
+        self.phase_radial_order = phase_radial_order
+        self.amplitude_radial_order = amplitude_radial_order
         self.num_phase_terms = num_phase_terms
         self.num_amplitude_terms = num_amplitude_terms
         self.patch_batch_size = patch_batch_size
@@ -59,8 +63,7 @@ class Pupil(nn.Module):
 
         rho_pixels, angular_parts, radial_coeffs, radial_powers = zernike_basis_tensors(
             object_grid_size,
-            num_phase_terms,
-            num_amplitude_terms,
+            max(phase_radial_order, amplitude_radial_order),
         )
         self.register_buffer("rho_pixels", rho_pixels)
         self.register_buffer("angular_parts", angular_parts)

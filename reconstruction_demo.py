@@ -12,8 +12,8 @@ PATCH_SIZE = 256
 CROP_SIZE = 256
 
 OBJECT_TO_CAPTURE_RATIO = 4
-NUM_PHASE_TERMS = 10
-NUM_AMPLITUDE_TERMS = 10
+PUPIL_PHASE_RADIAL_ORDER = 2
+PUPIL_AMPLITUDE_RADIAL_ORDER = 0
 
 # Optimization and runtime settings
 TORCH_DEVICE = "mps"  # Switch to "cpu" or "cuda".
@@ -32,8 +32,8 @@ result = solve_study(
     study,
     patch_size=PATCH_SIZE,
     object_to_capture_ratio=OBJECT_TO_CAPTURE_RATIO,
-    pupil_num_phase_terms=NUM_PHASE_TERMS,
-    pupil_num_amplitude_terms=NUM_AMPLITUDE_TERMS,
+    pupil_phase_radial_order=PUPIL_PHASE_RADIAL_ORDER,
+    pupil_amplitude_radial_order=PUPIL_AMPLITUDE_RADIAL_ORDER,
     epochs=EPOCHS,
     device=TORCH_DEVICE,
     patch_batch_size=PATCH_BATCH_SIZE,
@@ -49,3 +49,4 @@ np.save(OUTPUT_DIR / "object.npy", result.object.cpu().numpy())
 np.save(OUTPUT_DIR / "capture_0.npy", result.capture_0.cpu().numpy())
 print("Reconstruction complete!")
 print(f"Reconstructed object tensor: {result.object.shape}")
+print(f"Results written to {OUTPUT_DIR}")

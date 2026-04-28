@@ -131,8 +131,8 @@ def _train_batch(
     *,
     object_to_capture_ratio: int,
     pupil_cutoff_cyc_per_px: Tensor | float,
-    pupil_num_phase_terms: int,
-    pupil_num_amplitude_terms: int,
+    pupil_phase_radial_order: int,
+    pupil_amplitude_radial_order: int,
     epochs: int,
     device: str | torch.device,
 ) -> tuple[
@@ -147,8 +147,8 @@ def _train_batch(
         illumination_ky.to(device),
         object_to_capture_ratio=object_to_capture_ratio,
         pupil_cutoff_cyc_per_px_init=pupil_cutoff_cyc_per_px,
-        pupil_num_phase_terms=pupil_num_phase_terms,
-        pupil_num_amplitude_terms=pupil_num_amplitude_terms,
+        pupil_phase_radial_order=pupil_phase_radial_order,
+        pupil_amplitude_radial_order=pupil_amplitude_radial_order,
     ).to(device)
     model.train()
 
@@ -208,8 +208,8 @@ def solve_study(
     *,
     patch_size: int,
     object_to_capture_ratio: int = 4,
-    pupil_num_phase_terms: int = 5,
-    pupil_num_amplitude_terms: int = 1,
+    pupil_phase_radial_order: int = 2,
+    pupil_amplitude_radial_order: int = 0,
     epochs: int = 1000,
     device: str | torch.device = "cpu",
     patch_batch_size: int = 1,
@@ -260,8 +260,8 @@ def solve_study(
             study.illumination_ky,
             object_to_capture_ratio=object_to_capture_ratio,
             pupil_cutoff_cyc_per_px=pupil_cutoff_cyc_per_px,
-            pupil_num_phase_terms=pupil_num_phase_terms,
-            pupil_num_amplitude_terms=pupil_num_amplitude_terms,
+            pupil_phase_radial_order=pupil_phase_radial_order,
+            pupil_amplitude_radial_order=pupil_amplitude_radial_order,
             epochs=epochs,
             device=device,
         )
