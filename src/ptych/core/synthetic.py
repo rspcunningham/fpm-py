@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 from jaxtyping import Complex, Float
 
-from ptych.core.physics import FPMForwardModel
+from ptych.core.forward import FPMForwardModel
 
 
 def synthesize_captures(

@@ -1,6 +1,6 @@
 from ptych.core.model import PtychographyModel
 from ptych.core.object import Object
-from ptych.core.physics import FPMForwardModel
+from ptych.core.forward import FPMForwardModel
 from ptych.core.pupil import Pupil, pupil_cutoff_cyc_per_px_from_optics
 from ptych.core.solver import (
     StudySolveResult,

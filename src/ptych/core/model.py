@@ -5,7 +5,7 @@ from jaxtyping import Float
 from torch import Tensor
 
 from ptych.core.object import Object
-from ptych.core.physics import FPMForwardModel
+from ptych.core.forward import FPMForwardModel
 from ptych.core.pupil import Pupil
 
 

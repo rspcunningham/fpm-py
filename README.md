@@ -2,7 +2,7 @@
 
 fpm-py is a python/pytorch library for Fourier ptychography microscopy. It uses a series of low-resolution microscopy captures made under varying illumination angles to reconstruct a higher-resolution image of the sample.
 
-The latent scene of an [object](src/ptych/core/object.py) (the sample's complex-valued transmittance) and [pupil](src/ptych/core/pupil.py) (transfer function of the optical system) are passed through the physics-based [FPM forward model](src/ptych/core/physics.py), emulating computationally what happens to light physically.
+The latent scene of an [object](src/ptych/core/object.py) (the sample's complex-valued transmittance) and [pupil](src/ptych/core/pupil.py) (transfer function of the optical system) are passed through the physics-based [FPM forward model](src/ptych/core/forward.py), emulating computationally what happens to light physically.
 
 Forward model:
 
