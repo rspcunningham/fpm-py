@@ -10,7 +10,7 @@ Forward model:
 
 ```math
 \begin{aligned}
-I_j(\mathbf{r})
+\hat{y}_j(\mathbf{r})
 &=
 \left\lvert
 \mathcal{F}^{-1}\!\left[
@@ -32,8 +32,8 @@ Optimization objective ([src/ptych/core/solver.py](src/ptych/core/solver.py)):
 ```math
 \mathcal{L} = \sum_j
 \left\lVert
-\sqrt{I_j^{\text{pred}} + \epsilon}
+\sqrt{\hat{y}_j + \epsilon}
 -
-\sqrt{I_j^{\text{meas}} + \epsilon}
+\sqrt{y_j + \epsilon}
 \right\rVert_2^2
 ```

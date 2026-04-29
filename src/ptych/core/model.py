@@ -9,6 +9,15 @@ from ptych.core.object import Object
 from ptych.core.pupil import Pupil
 
 
+class IlluminationGains(nn.Module):
+    def __init__(self, num_illuminations: int) -> None:
+        super().__init__()
+        self.log_gains = nn.Parameter(torch.zeros(num_illuminations))
+
+    def forward(self) -> Float[Tensor, "illumination"]:
+        return torch.exp(self.log_gains)
+
+
 def _pupil_cutoff_limits(
     pupil_cutoff_cyc_per_px: Tensor | float,
 ) -> tuple[float, float]:
@@ -36,7 +45,9 @@ class PtychographyModel(nn.Module):
         pupil_amplitude_radial_order: int = 0,
     ) -> None:
         super().__init__()
-        patch_batch_size, _, capture_height, _ = measured_intensity_batch.shape
+        patch_batch_size, num_illuminations, capture_height, _ = (
+            measured_intensity_batch.shape
+        )
         object_grid_size = capture_height * object_to_capture_ratio
         min_pupil_cutoff, max_pupil_cutoff = _pupil_cutoff_limits(
             pupil_cutoff_cyc_per_px_init
@@ -52,6 +63,7 @@ class PtychographyModel(nn.Module):
             patch_batch_size=patch_batch_size,
             pupil_cutoff_bounds=(min_pupil_cutoff, max_pupil_cutoff),
         )
+        self.illumination_gains = IlluminationGains(num_illuminations)
         self.forward_model = FPMForwardModel(object_grid_size)
         self.register_buffer(
             "illumination_kx", illumination_kx / object_to_capture_ratio
@@ -68,6 +80,10 @@ class PtychographyModel(nn.Module):
             pupil_tensor,
             self.illumination_kx,
             self.illumination_ky,
+        )
+        predicted_intensities_full_res = (
+            predicted_intensities_full_res
+            * self.illumination_gains()[None, :, None, None]
         )
         patch_batch_size, num_illuminations, object_size, _ = (
             predicted_intensities_full_res.shape
