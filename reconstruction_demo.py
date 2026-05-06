@@ -7,23 +7,22 @@ from ptych import PtychStudy, solve_study
 from ptych.core.metric_plots import save_metrics_summary
 
 dataset = "usaf-test-dark"
-# dataset = "malaria-test"
 
 # Reconstruction geometry settings
-PATCH_SIZE = 300
-CROP_SIZE = 300
+PATCH_SIZE = 500
+CROP_SIZE = 500
 
-OBJECT_TO_CAPTURE_RATIO = 1
+OBJECT_TO_CAPTURE_RATIO = 2
 PUPIL_PHASE_RADIAL_ORDER = 3
 PUPIL_AMPLITUDE_RADIAL_ORDER = 0
 
 # Optimization and runtime settings
 TORCH_DEVICE = "mps"  # Switch to "cpu" or "cuda".
 PATCH_BATCH_SIZE = 16
-EPOCHS = 10
+EPOCHS = 500
 
 # Output directory
-OUTPUT_DIR = Path(f"results/{dataset}-small-gains")
+OUTPUT_DIR = Path(f"results/{dataset}")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Load only the reconstruction crop from the cached dataset.

@@ -26,3 +26,7 @@ Prefer modern pytorch and ML best practices over custom routines always. Rely on
 ## Testing Guidelines
 
 This is a research/prototype codebase. Ignore testing unless specifically asked for.
+
+## Experimental Guidelines
+
+When asked to run experiments that modify hyperparameters or architectures, do NOT wire optional configurations through the repo. Instead, simply modify the source code directly -- you can always revert changes to 'toggle' back to the prior state. Similarly, do not code in parameter sweeps into existing files. You should just run-modify-run, or create an ad-hoc temporary script. Never write temp scripts directly to the repo; keep them ephemeral in a temp dir or as raw executable python strings. Ensure all artifacts are written to the ./results dir, which should always remain gitignored.

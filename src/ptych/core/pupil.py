@@ -46,7 +46,7 @@ class Pupil(nn.Module):
         raw_amplitude_coeffs: Tensor | None = None,
         pupil_cutoff_cyc_per_px: Tensor | float = 0.2,
         patch_batch_size: int | None = None,
-        edge_width_px: float = 2.0,
+        edge_width_px: float = 0.5,
         pupil_cutoff_bounds: tuple[float, float] | None = None,
     ) -> None:
         super().__init__()
