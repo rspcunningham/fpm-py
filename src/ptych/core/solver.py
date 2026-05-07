@@ -50,6 +50,19 @@ class _SolvedBatch:
     object: Complex[Tensor, "patch_batch object_height object_width"]
 
 
+def _frequency_radius_grid(
+    grid_size: int,
+    *,
+    dtype: torch.dtype,
+    device: str | torch.device,
+) -> Float[Tensor, "height width"]:
+    coords = torch.arange(grid_size, dtype=dtype, device=device)
+    coords = torch.where(coords >= grid_size / 2, coords - grid_size, coords)
+    coords = coords / grid_size
+    y_grid, x_grid = torch.meshgrid(coords, coords, indexing="ij")
+    return torch.sqrt(x_grid.square() + y_grid.square())
+
+
 def _axis_patches(length: int, patch_size: int) -> list[_AxisPatch]:
     if patch_size > length:
         raise ValueError(
@@ -172,15 +185,80 @@ def _train_batch(
         epochs,
         num_illuminations,
     )
+    object_grid_size = measured_intensity_batch.shape[-1] * object_to_capture_ratio
+    frequency_radius = _frequency_radius_grid(
+        object_grid_size,
+        dtype=measured_intensity_batch.dtype,
+        device=device,
+    )
+    illumination_kx_object = illumination_kx / object_to_capture_ratio
+    illumination_ky_object = illumination_ky / object_to_capture_ratio
+    illumination_radius = torch.sqrt(
+        illumination_kx_object.detach().cpu().square()
+        + illumination_ky_object.detach().cpu().square()
+    )
+    # The cheetah-print modes concentrate where shifted pupil support enters
+    # new LED shells, so only weight those annular transition bands.
+    illumination_shells = torch.unique(torch.round(illumination_radius, decimals=6))
+    illumination_shells = illumination_shells[illumination_shells > 1e-6].to(device)
+    transition_radii = float(pupil_cutoff_cyc_per_px) + illumination_shells
+    transition_radii = transition_radii[transition_radii < frequency_radius.max()]
+    fourier_weight = torch.exp(
+        -0.5
+        * ((frequency_radius[None] - transition_radii[:, None, None]) / 0.01).square()
+    ).sum(dim=0)
+    fourier_weight = fourier_weight / fourier_weight.mean().clamp_min(1e-6)
+    fourier_regularization_weight = 1e-1
+    tv_regularization_weight = 5e-3
 
     for epoch in tqdm(range(epochs), desc="Solving inverse model..."):
-        predicted_intensities = model()
+        object_tensor = model.object()
+        predicted_intensities = model.forward_model(
+            object_tensor,
+            model.pupil(),
+            model.illumination_kx,
+            model.illumination_ky,
+        )
+        predicted_intensities = (
+            predicted_intensities * model.illumination_gains()[None, :, None, None]
+        )
+        predicted_intensities = torch.nn.functional.avg_pool2d(
+            predicted_intensities.reshape(
+                patch_batch_size * num_illuminations,
+                1,
+                object_grid_size,
+                object_grid_size,
+            ),
+            kernel_size=object_to_capture_ratio,
+            stride=object_to_capture_ratio,
+        ).reshape_as(measured_intensity_batch)
         intensity_residual = torch.sqrt(predicted_intensities + 1e-8) - torch.sqrt(
             measured_intensity_batch + 1e-8
         )
         squared_intensity_residual = intensity_residual.square()
         patch_loss = squared_intensity_residual.mean(dim=(1, 2, 3))
-        loss = patch_loss.sum()
+        object_intensity = object_tensor.abs().square()
+        intensity_dx = object_intensity[..., :, 1:] - object_intensity[..., :, :-1]
+        intensity_dy = object_intensity[..., 1:, :] - object_intensity[..., :-1, :]
+        tv_regularization = (
+            torch.sqrt(intensity_dx.square() + 1e-6).mean()
+            + torch.sqrt(intensity_dy.square() + 1e-6).mean()
+        )
+        object_intensity_centered = object_intensity - object_intensity.mean(
+            dim=(-2, -1),
+            keepdim=True,
+        )
+        object_fourier = torch.fft.fft2(object_intensity_centered, norm="ortho")
+        fourier_regularization = (
+            (object_fourier.abs().square() * fourier_weight[None])
+            .mean(dim=(-2, -1))
+            .sum()
+        )
+        loss = (
+            patch_loss.sum()
+            + fourier_regularization_weight * fourier_regularization
+            + tv_regularization_weight * tv_regularization
+        )
         illumination_loss = squared_intensity_residual.mean(dim=(0, 2, 3))
 
         optimizer.zero_grad(set_to_none=True)
