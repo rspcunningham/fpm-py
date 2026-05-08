@@ -174,7 +174,7 @@ def _train_batch(
 
     optimizer = torch.optim.AdamW(
         [
-            {"params": model.object.parameters(), "lr": 2e-2},
+            {"params": model.object.parameters(), "lr": 5e-3},
             {"params": model.pupil.parameters(), "lr": 1e-3},
             {"params": model.illumination_gains.parameters(), "lr": 1e-2},
             {"params": model.darkfield_backgrounds.parameters(), "lr": 1e-2},
