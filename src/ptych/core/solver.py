@@ -49,22 +49,7 @@ class _SolvedBatch:
     object: Complex[Tensor, "patch_batch object_height object_width"]
 
 
-_MEASUREMENT_FLOOR_QUANTILE = 0.0
 _ILLUMINATION_CHUNK_SIZE = 2
-
-
-def _measurement_noise_floor(
-    measured_intensity_batch: Float[Tensor, "patch_batch illumination height width"],
-) -> Tensor:
-    # The square-root data term is a variance-stabilized intensity likelihood.
-    # A low empirical floor keeps near-black, low-SNR pixels from having
-    # effectively unlimited leverage without imposing any spatial object prior.
-    if _MEASUREMENT_FLOOR_QUANTILE <= 0:
-        return measured_intensity_batch.detach().new_zeros(()).cpu()
-
-    flat = measured_intensity_batch.detach().flatten().cpu()
-    kth_index = max(1, int(_MEASUREMENT_FLOOR_QUANTILE * flat.numel()))
-    return flat.kthvalue(kth_index).values.clamp_min(1e-8)
 
 
 def _axis_patches(length: int, patch_size: int) -> list[_AxisPatch]:
@@ -157,7 +142,6 @@ def _train_batch(
     Complex[Tensor, "patch_batch object_height object_width"],
     InverseMetrics,
 ]:
-    measurement_floor = _measurement_noise_floor(measured_intensity_batch).to(device)
     measured_intensity_batch = measured_intensity_batch.to(device)
     model = PtychographyModel(
         measured_intensity_batch,
@@ -208,9 +192,9 @@ def _train_batch(
             illumination_slice = slice(illumination_start, illumination_end)
             predicted_intensities = model(illumination_slice)
             measured_intensity_chunk = measured_intensity_batch[:, illumination_slice]
-            intensity_residual = torch.sqrt(
-                predicted_intensities + measurement_floor
-            ) - torch.sqrt(measured_intensity_chunk + measurement_floor)
+            intensity_residual = torch.sqrt(predicted_intensities) - torch.sqrt(
+                measured_intensity_chunk
+            )
             squared_intensity_residual = intensity_residual.square()
             patch_loss_numerator = squared_intensity_residual.sum(dim=(1, 2, 3))
             loss_chunk = (patch_loss_numerator / patch_loss_denominator).sum()
