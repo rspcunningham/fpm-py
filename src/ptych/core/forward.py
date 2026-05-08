@@ -25,9 +25,9 @@ class FPMForwardModel(nn.Module):
         pupil_tensor: Complex[torch.Tensor, "patch_batch object_height object_width"],
         illumination_kx: Float[torch.Tensor, "illumination"],
         illumination_ky: Float[torch.Tensor, "illumination"],
-    ) -> Float[torch.Tensor, "patch_batch illumination object_height object_width"]:
+    ) -> Complex[torch.Tensor, "patch_batch illumination object_height object_width"]:
         """
-        Return predicted full-resolution intensities for each k-space location.
+        Return predicted full-resolution complex fields for each k-space location.
         """
         _, object_height, _ = object_tensor.shape
         if object_height != self.object_grid_size:
@@ -46,10 +46,7 @@ class FPMForwardModel(nn.Module):
             * (illumination_kx * x_grid[None] + illumination_ky * y_grid[None])
         )
         phase_ramps = torch.exp(1j * phase.to(object_tensor.dtype))
-
         tilted_objects = object_tensor[:, None] * phase_ramps[None]
         objects_fourier = fft2(tilted_objects)
         filtered_fourier = pupil_tensor[:, None] * objects_fourier
-        complex_image_fields = ifft2(filtered_fourier)
-        predicted_intensities = torch.abs(complex_image_fields) ** 2
-        return predicted_intensities
+        return ifft2(filtered_fourier)

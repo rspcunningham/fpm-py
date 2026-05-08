@@ -25,19 +25,18 @@ def synthesize_captures(
     Returns:
         Synthetic captures [illumination, height, width] as float intensities
     """
-    # Renormalize k-vectors from n-grid to N-grid
     illumination_kx = illumination_kx / object_to_capture_ratio
     illumination_ky = illumination_ky / object_to_capture_ratio
 
     # Run forward model at full resolution with one synthetic patch batch element.
     forward_model = FPMForwardModel(object_tensor.shape[-1]).to(object_tensor.device)
-    predicted_intensities = forward_model(
+    complex_image_fields = forward_model(
         object_tensor[None],
         pupil_tensor[None],
         illumination_kx,
         illumination_ky,
     )  # [1, illumination, object_height, object_width]
-    predicted_intensities = predicted_intensities.squeeze(0)
+    predicted_intensities = complex_image_fields.squeeze(0).abs().square()
 
     # Reduce full-resolution intensities to the capture grid with average pooling
     if object_to_capture_ratio > 1:

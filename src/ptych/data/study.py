@@ -17,7 +17,10 @@ class PtychStudy:
     capture_metadata: list[Capture]
     captures: Float[
         torch.Tensor, "illumination height width"
-    ]  # Demosaiced, exposure-corrected single-channel float intensities normalized to max 1.
+    ]  # Demosaiced, dark-subtracted, exposure-corrected scalar intensities normalized to max 1.
+    measurement_mask: Float[
+        torch.Tensor, "illumination height width"
+    ]  # One at valid sensor samples.
     illumination_kx: Float[
         torch.Tensor, "illumination"
     ]  # Normalized to camera grid (cycles per sample pixel).
@@ -30,12 +33,14 @@ class PtychStudy:
         manifest: StudyManifest,
         capture_metadata: list[Capture],
         captures: Float[torch.Tensor, "illumination height width"],
+        measurement_mask: Float[torch.Tensor, "illumination height width"],
         illumination_kx: Float[torch.Tensor, "illumination"],
         illumination_ky: Float[torch.Tensor, "illumination"],
     ):
         self.manifest = manifest
         self.capture_metadata = capture_metadata
         self.captures = captures
+        self.measurement_mask = measurement_mask
         self.illumination_kx = illumination_kx
         self.illumination_ky = illumination_ky
 
@@ -79,6 +84,7 @@ class PtychStudy:
         (
             capture_metadata,
             captures_tensor,
+            measurement_mask,
             illumination_kx,
             illumination_ky,
         ) = preprocess_study_data(
@@ -91,6 +97,7 @@ class PtychStudy:
             manifest=manifest,
             capture_metadata=capture_metadata,
             captures=captures_tensor,
+            measurement_mask=measurement_mask,
             illumination_kx=illumination_kx,
             illumination_ky=illumination_ky,
         )

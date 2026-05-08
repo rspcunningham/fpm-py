@@ -62,6 +62,7 @@ def preprocess_study_data(
 ) -> tuple[
     list[Capture],
     Float[torch.Tensor, "illumination height width"],
+    Float[torch.Tensor, "illumination height width"],
     Float[torch.Tensor, "illumination"],
     Float[torch.Tensor, "illumination"],
 ]:
@@ -110,6 +111,7 @@ def preprocess_study_data(
         len(valid_captures), device=demosaiced_captures.device
     )
     captures_tensor = demosaiced_captures[capture_indices, channel_indices]
+    measurement_mask = torch.ones_like(captures_tensor)
     exposure_ms = torch.tensor(
         [_capture_exposure_ms(i, cap.exposure) for i, cap in enumerate(valid_captures)],
         dtype=captures_tensor.dtype,
@@ -123,4 +125,10 @@ def preprocess_study_data(
             "Prepared captures must contain at least one positive intensity value"
         )
 
-    return valid_captures, captures_tensor / max_value, illumination_kx, illumination_ky
+    return (
+        valid_captures,
+        captures_tensor / max_value,
+        measurement_mask,
+        illumination_kx,
+        illumination_ky,
+    )

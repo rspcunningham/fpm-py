@@ -51,6 +51,7 @@ class _SolvedBatch:
 
 
 _MEASUREMENT_FLOOR_QUANTILE = 0.05
+_ILLUMINATION_CHUNK_SIZE = 2
 
 
 def _measurement_noise_floor(
@@ -140,6 +141,7 @@ def _stitch_patch_field(
 
 def _train_batch(
     measured_intensity_batch: Float[Tensor, "patch_batch illumination height width"],
+    measurement_mask_batch: Float[Tensor, "patch_batch illumination height width"],
     illumination_kx: Float[Tensor, "illumination"],
     illumination_ky: Float[Tensor, "illumination"],
     *,
@@ -156,6 +158,7 @@ def _train_batch(
 ]:
     measurement_floor = _measurement_noise_floor(measured_intensity_batch).to(device)
     measured_intensity_batch = measured_intensity_batch.to(device)
+    measurement_mask_batch = measurement_mask_batch.to(device)
     model = PtychographyModel(
         measured_intensity_batch,
         illumination_kx.to(device),
@@ -178,7 +181,9 @@ def _train_batch(
             {"params": model.pupil.parameters(), "lr": 1e-3},
             {"params": model.illumination_gains.parameters(), "lr": 1e-2},
             {"params": model.darkfield_backgrounds.parameters(), "lr": 1e-2},
-        ]
+            {"params": model.darkfield_scatter.parameters(), "lr": 3e-2},
+        ],
+        weight_decay=0.0,
     )
 
     patch_batch_size, num_illuminations, _, _ = measured_intensity_batch.shape
@@ -188,24 +193,47 @@ def _train_batch(
         epochs,
         num_illuminations,
     )
+    patch_loss_denominator = measurement_mask_batch.sum(dim=(1, 2, 3)).clamp_min(1)
 
     for epoch in tqdm(range(epochs), desc="Solving inverse model..."):
-        predicted_intensities = model()
-        intensity_residual = torch.sqrt(
-            predicted_intensities + measurement_floor
-        ) - torch.sqrt(measured_intensity_batch + measurement_floor)
-        squared_intensity_residual = intensity_residual.square()
-        patch_loss = squared_intensity_residual.mean(dim=(1, 2, 3))
-        loss = patch_loss.sum()
-        illumination_loss = squared_intensity_residual.mean(dim=(0, 2, 3))
-
         optimizer.zero_grad(set_to_none=True)
-        loss.backward()
+        loss = measured_intensity_batch.new_zeros(())
+        patch_loss = measured_intensity_batch.new_zeros(patch_batch_size)
+        illumination_loss = measured_intensity_batch.new_zeros(num_illuminations)
+        for illumination_start in range(0, num_illuminations, _ILLUMINATION_CHUNK_SIZE):
+            illumination_end = min(
+                illumination_start + _ILLUMINATION_CHUNK_SIZE,
+                num_illuminations,
+            )
+            illumination_slice = slice(illumination_start, illumination_end)
+            predicted_intensities = model(illumination_slice)
+            measured_intensity_chunk = measured_intensity_batch[:, illumination_slice]
+            measurement_mask_chunk = measurement_mask_batch[:, illumination_slice]
+            intensity_residual = torch.sqrt(
+                predicted_intensities + measurement_floor
+            ) - torch.sqrt(measured_intensity_chunk + measurement_floor)
+            squared_intensity_residual = (
+                intensity_residual.square() * measurement_mask_chunk
+            )
+            patch_loss_numerator = squared_intensity_residual.sum(dim=(1, 2, 3))
+            loss_chunk = (patch_loss_numerator / patch_loss_denominator).sum()
+            loss_chunk.backward()
+
+            loss = loss + loss_chunk.detach()
+            patch_loss = patch_loss + (
+                patch_loss_numerator.detach() / patch_loss_denominator
+            )
+            illumination_loss[illumination_slice] = (
+                squared_intensity_residual.detach().sum(dim=(0, 2, 3))
+                / measurement_mask_chunk.sum(dim=(0, 2, 3)).clamp_min(1)
+            )
         optimizer.step()
 
-        loss_history[epoch] = loss.detach()
-        patch_loss_history[epoch] = patch_loss.detach()
-        illumination_loss_history[epoch] = illumination_loss.detach()
+        loss_history[epoch] = loss
+        patch_loss_history[epoch] = patch_loss
+        illumination_loss_history[epoch] = illumination_loss
+        if torch.backends.mps.is_available():
+            torch.mps.empty_cache()
 
     metrics: InverseMetrics = {
         "loss": loss_history.cpu().tolist(),
@@ -265,6 +293,16 @@ def solve_study(
                 for patch in patch_batch
             ]
         )
+        measurement_mask_batch = torch.stack(
+            [
+                study.measurement_mask[
+                    :,
+                    patch.y.start : patch.y.start + patch_size,
+                    patch.x.start : patch.x.start + patch_size,
+                ]
+                for patch in patch_batch
+            ]
+        )
 
         (
             objects,
@@ -272,6 +310,7 @@ def solve_study(
             batch_metrics,
         ) = _train_batch(
             measured_intensity_batch,
+            measurement_mask_batch,
             study.illumination_kx,
             study.illumination_ky,
             object_to_capture_ratio=object_to_capture_ratio,
