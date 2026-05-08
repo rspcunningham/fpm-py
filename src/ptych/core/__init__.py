@@ -1,3 +1,4 @@
+from ptych.core.darkfield import DarkfieldBackgrounds, DarkfieldScatter
 from ptych.core.forward import FPMForwardModel
 from ptych.core.model import PtychographyModel
 from ptych.core.object import Object
@@ -9,6 +10,8 @@ from ptych.core.solver import (
 from ptych.core.synthetic import synthesize_captures
 
 __all__ = [
+    "DarkfieldBackgrounds",
+    "DarkfieldScatter",
     "FPMForwardModel",
     "Object",
     "PtychographyModel",

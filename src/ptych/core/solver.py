@@ -46,8 +46,10 @@ class _PatchCrop:
 @dataclass(frozen=True)
 class _SolvedBatch:
     patches: list[_Patch]
-    reconstruction: Float[Tensor, "patch_batch object_height object_width"]
     object: Complex[Tensor, "patch_batch object_height object_width"]
+
+
+_ILLUMINATION_CHUNK_SIZE = 2
 
 
 def _axis_patches(length: int, patch_size: int) -> list[_AxisPatch]:
@@ -159,37 +161,59 @@ def _train_batch(
 
     optimizer = torch.optim.AdamW(
         [
-            {"params": model.object.parameters(), "lr": 1e-2},
+            {"params": model.object.parameters(), "lr": 5e-3},
             {"params": model.pupil.parameters(), "lr": 1e-3},
             {"params": model.illumination_gains.parameters(), "lr": 1e-2},
-        ]
+            {"params": model.darkfield_backgrounds.parameters(), "lr": 1e-2},
+            {"params": model.darkfield_scatter.parameters(), "lr": 3e-2},
+        ],
+        weight_decay=0.0,
     )
 
-    patch_batch_size, num_illuminations, _, _ = measured_intensity_batch.shape
+    patch_batch_size, num_illuminations, height, width = measured_intensity_batch.shape
     loss_history = measured_intensity_batch.new_zeros(epochs)
     patch_loss_history = measured_intensity_batch.new_zeros(epochs, patch_batch_size)
     illumination_loss_history = measured_intensity_batch.new_zeros(
         epochs,
         num_illuminations,
     )
+    patch_loss_denominator = num_illuminations * height * width
 
     for epoch in tqdm(range(epochs), desc="Solving inverse model..."):
-        predicted_intensities = model()
-        intensity_residual = torch.sqrt(predicted_intensities + 1e-8) - torch.sqrt(
-            measured_intensity_batch + 1e-8
-        )
-        squared_intensity_residual = intensity_residual.square()
-        patch_loss = squared_intensity_residual.mean(dim=(1, 2, 3))
-        loss = patch_loss.sum()
-        illumination_loss = squared_intensity_residual.mean(dim=(0, 2, 3))
-
         optimizer.zero_grad(set_to_none=True)
-        loss.backward()
+        loss = measured_intensity_batch.new_zeros(())
+        patch_loss = measured_intensity_batch.new_zeros(patch_batch_size)
+        illumination_loss = measured_intensity_batch.new_zeros(num_illuminations)
+        for illumination_start in range(0, num_illuminations, _ILLUMINATION_CHUNK_SIZE):
+            illumination_end = min(
+                illumination_start + _ILLUMINATION_CHUNK_SIZE,
+                num_illuminations,
+            )
+            illumination_slice = slice(illumination_start, illumination_end)
+            predicted_intensities = model(illumination_slice)
+            measured_intensity_chunk = measured_intensity_batch[:, illumination_slice]
+            intensity_residual = torch.sqrt(predicted_intensities) - torch.sqrt(
+                measured_intensity_chunk
+            )
+            squared_intensity_residual = intensity_residual.square()
+            patch_loss_numerator = squared_intensity_residual.sum(dim=(1, 2, 3))
+            loss_chunk = (patch_loss_numerator / patch_loss_denominator).sum()
+            loss_chunk.backward()
+
+            loss = loss + loss_chunk.detach()
+            patch_loss = patch_loss + (
+                patch_loss_numerator.detach() / patch_loss_denominator
+            )
+            illumination_loss[illumination_slice] = (
+                squared_intensity_residual.detach().mean(dim=(0, 2, 3))
+            )
         optimizer.step()
 
-        loss_history[epoch] = loss.detach()
-        patch_loss_history[epoch] = patch_loss.detach()
-        illumination_loss_history[epoch] = illumination_loss.detach()
+        loss_history[epoch] = loss
+        patch_loss_history[epoch] = patch_loss
+        illumination_loss_history[epoch] = illumination_loss
+        if torch.backends.mps.is_available():
+            torch.mps.empty_cache()
 
     metrics: InverseMetrics = {
         "loss": loss_history.cpu().tolist(),
@@ -226,7 +250,6 @@ def solve_study(
         magnification=study.manifest.magnification,
         object_to_capture_ratio=object_to_capture_ratio,
     )
-
     _, height, width = study.captures.shape
     patches = [
         _Patch(y=y_patch, x=x_patch)
@@ -269,7 +292,6 @@ def solve_study(
         solved_batches.append(
             _SolvedBatch(
                 patches=patch_batch,
-                reconstruction=objects.abs().square(),
                 object=objects,
             )
         )

@@ -123,4 +123,9 @@ def preprocess_study_data(
             "Prepared captures must contain at least one positive intensity value"
         )
 
-    return valid_captures, captures_tensor / max_value, illumination_kx, illumination_ky
+    return (
+        valid_captures,
+        captures_tensor / max_value,
+        illumination_kx,
+        illumination_ky,
+    )

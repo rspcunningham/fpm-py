@@ -9,8 +9,8 @@ from ptych.core.metric_plots import save_metrics_summary
 dataset = "usaf-test-dark"
 
 # Reconstruction geometry settings
-PATCH_SIZE = 500
-CROP_SIZE = 500
+PATCH_SIZE = 400
+CROP_SIZE = 400
 
 OBJECT_TO_CAPTURE_RATIO = 2
 PUPIL_PHASE_RADIAL_ORDER = 3
@@ -24,6 +24,7 @@ EPOCHS = 500
 # Output directory
 OUTPUT_DIR = Path(f"results/{dataset}")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
 
 # Load only the reconstruction crop from the cached dataset.
 study = PtychStudy.load(dataset, crop_size=CROP_SIZE)

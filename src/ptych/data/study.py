@@ -17,7 +17,7 @@ class PtychStudy:
     capture_metadata: list[Capture]
     captures: Float[
         torch.Tensor, "illumination height width"
-    ]  # Demosaiced, exposure-corrected single-channel float intensities normalized to max 1.
+    ]  # Demosaiced, dark-subtracted, exposure-corrected scalar intensities normalized to max 1.
     illumination_kx: Float[
         torch.Tensor, "illumination"
     ]  # Normalized to camera grid (cycles per sample pixel).
