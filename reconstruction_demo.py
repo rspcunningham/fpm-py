@@ -19,7 +19,7 @@ PUPIL_AMPLITUDE_RADIAL_ORDER = 0
 # Optimization and runtime settings
 TORCH_DEVICE = "mps"  # Switch to "cpu" or "cuda".
 PATCH_BATCH_SIZE = 16
-EPOCHS = 750
+EPOCHS = 1000
 
 # Output directory
 OUTPUT_DIR = Path(f"results/{dataset}")
