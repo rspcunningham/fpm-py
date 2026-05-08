@@ -14,28 +14,6 @@ class Object(nn.Module):
         object_to_capture_ratio: int,
     ) -> None:
         super().__init__()
-        init_intensity_low_res = measured_intensity_batch[:, 0].clamp_min(0)
-        init_amp = F.interpolate(
-            init_intensity_low_res.unsqueeze(1),
-            scale_factor=object_to_capture_ratio,
-            mode="nearest",
-        ).squeeze(1)
-        self.amplitude = nn.Parameter(torch.sqrt(init_amp + 1e-8).detach())
-        self.phase = nn.Parameter(torch.zeros_like(init_amp))
-
-    def forward(self) -> Complex[Tensor, "patch_batch object_height object_width"]:
-        return self.amplitude * torch.exp(1j * self.phase)
-
-
-class SigmoidObject(nn.Module):
-    def __init__(
-        self,
-        measured_intensity_batch: Float[
-            Tensor, "patch_batch illumination height width"
-        ],
-        object_to_capture_ratio: int,
-    ) -> None:
-        super().__init__()
         init_amplitude_low_res = torch.sqrt(
             measured_intensity_batch[:, 0].clamp_min(0) + 1e-8
         )

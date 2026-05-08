@@ -7,11 +7,11 @@ from jaxtyping import Float
 from torch import Tensor
 
 from ptych.core.forward import FPMForwardModel
-from ptych.core.object import Object, SigmoidObject
+from ptych.core.object import Object
 from ptych.core.pupil import Pupil
 
 _DARKFIELD_SCATTER_RANK = 2
-_OBJECT_CLASS: type[Object] | type[SigmoidObject] = SigmoidObject
+_DARKFIELD_BACKGROUND_QUANTILE = 0.01
 
 
 class IlluminationGains(nn.Module):
@@ -25,6 +25,21 @@ class IlluminationGains(nn.Module):
 
 def _inverse_softplus(value: Tensor) -> Tensor:
     return value + torch.log(-torch.expm1(-value))
+
+
+def _darkfield_mask(
+    illumination_kx: Float[Tensor, "illumination"],
+    illumination_ky: Float[Tensor, "illumination"],
+    *,
+    object_to_capture_ratio: int,
+    pupil_cutoff_cyc_per_px: Tensor | float,
+) -> Tensor:
+    illumination_radius = torch.sqrt(
+        (illumination_kx.detach().cpu() / object_to_capture_ratio).square()
+        + (illumination_ky.detach().cpu() / object_to_capture_ratio).square()
+    )
+    pupil_cutoff = torch.as_tensor(pupil_cutoff_cyc_per_px).detach().cpu()
+    return illumination_radius > pupil_cutoff
 
 
 class DarkfieldBackgrounds(nn.Module):
@@ -47,14 +62,14 @@ class DarkfieldBackgrounds(nn.Module):
             .reshape(num_illuminations, -1)
             .cpu()
         )
-        kth_index = max(1, int(0.01 * flat.shape[1]))
+        kth_index = max(1, int(_DARKFIELD_BACKGROUND_QUANTILE * flat.shape[1]))
         background = flat.kthvalue(kth_index, dim=1).values.clamp_min(1e-8)
-        illumination_radius = torch.sqrt(
-            (illumination_kx.detach().cpu() / object_to_capture_ratio).square()
-            + (illumination_ky.detach().cpu() / object_to_capture_ratio).square()
+        darkfield_mask = _darkfield_mask(
+            illumination_kx,
+            illumination_ky,
+            object_to_capture_ratio=object_to_capture_ratio,
+            pupil_cutoff_cyc_per_px=pupil_cutoff_cyc_per_px,
         )
-        pupil_cutoff = torch.as_tensor(pupil_cutoff_cyc_per_px).detach().cpu()
-        darkfield_mask = illumination_radius > pupil_cutoff
         background = torch.where(
             darkfield_mask,
             background,
@@ -83,12 +98,12 @@ class DarkfieldScatter(nn.Module):
     ) -> None:
         super().__init__()
         _, num_illuminations, height, width = measured_intensity_batch.shape
-        illumination_radius = torch.sqrt(
-            (illumination_kx.detach().cpu() / object_to_capture_ratio).square()
-            + (illumination_ky.detach().cpu() / object_to_capture_ratio).square()
+        darkfield_mask = _darkfield_mask(
+            illumination_kx,
+            illumination_ky,
+            object_to_capture_ratio=object_to_capture_ratio,
+            pupil_cutoff_cyc_per_px=pupil_cutoff_cyc_per_px,
         )
-        pupil_cutoff = torch.as_tensor(pupil_cutoff_cyc_per_px).detach().cpu()
-        darkfield_mask = illumination_radius > pupil_cutoff
 
         if darkfield_mask.any():
             seed = (
@@ -158,7 +173,7 @@ class PtychographyModel(nn.Module):
         )
 
         self.object_to_capture_ratio = object_to_capture_ratio
-        self.object = _OBJECT_CLASS(measured_intensity_batch, object_to_capture_ratio)
+        self.object = Object(measured_intensity_batch, object_to_capture_ratio)
         self.pupil = Pupil(
             object_grid_size,
             phase_radial_order=pupil_phase_radial_order,

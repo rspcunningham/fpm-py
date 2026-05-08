@@ -46,7 +46,6 @@ class _PatchCrop:
 @dataclass(frozen=True)
 class _SolvedBatch:
     patches: list[_Patch]
-    reconstruction: Float[Tensor, "patch_batch object_height object_width"]
     object: Complex[Tensor, "patch_batch object_height object_width"]
 
 
@@ -141,7 +140,6 @@ def _stitch_patch_field(
 
 def _train_batch(
     measured_intensity_batch: Float[Tensor, "patch_batch illumination height width"],
-    measurement_mask_batch: Float[Tensor, "patch_batch illumination height width"],
     illumination_kx: Float[Tensor, "illumination"],
     illumination_ky: Float[Tensor, "illumination"],
     *,
@@ -158,7 +156,6 @@ def _train_batch(
 ]:
     measurement_floor = _measurement_noise_floor(measured_intensity_batch).to(device)
     measured_intensity_batch = measured_intensity_batch.to(device)
-    measurement_mask_batch = measurement_mask_batch.to(device)
     model = PtychographyModel(
         measured_intensity_batch,
         illumination_kx.to(device),
@@ -186,14 +183,14 @@ def _train_batch(
         weight_decay=0.0,
     )
 
-    patch_batch_size, num_illuminations, _, _ = measured_intensity_batch.shape
+    patch_batch_size, num_illuminations, height, width = measured_intensity_batch.shape
     loss_history = measured_intensity_batch.new_zeros(epochs)
     patch_loss_history = measured_intensity_batch.new_zeros(epochs, patch_batch_size)
     illumination_loss_history = measured_intensity_batch.new_zeros(
         epochs,
         num_illuminations,
     )
-    patch_loss_denominator = measurement_mask_batch.sum(dim=(1, 2, 3)).clamp_min(1)
+    patch_loss_denominator = num_illuminations * height * width
 
     for epoch in tqdm(range(epochs), desc="Solving inverse model..."):
         optimizer.zero_grad(set_to_none=True)
@@ -208,13 +205,10 @@ def _train_batch(
             illumination_slice = slice(illumination_start, illumination_end)
             predicted_intensities = model(illumination_slice)
             measured_intensity_chunk = measured_intensity_batch[:, illumination_slice]
-            measurement_mask_chunk = measurement_mask_batch[:, illumination_slice]
             intensity_residual = torch.sqrt(
                 predicted_intensities + measurement_floor
             ) - torch.sqrt(measured_intensity_chunk + measurement_floor)
-            squared_intensity_residual = (
-                intensity_residual.square() * measurement_mask_chunk
-            )
+            squared_intensity_residual = intensity_residual.square()
             patch_loss_numerator = squared_intensity_residual.sum(dim=(1, 2, 3))
             loss_chunk = (patch_loss_numerator / patch_loss_denominator).sum()
             loss_chunk.backward()
@@ -224,8 +218,7 @@ def _train_batch(
                 patch_loss_numerator.detach() / patch_loss_denominator
             )
             illumination_loss[illumination_slice] = (
-                squared_intensity_residual.detach().sum(dim=(0, 2, 3))
-                / measurement_mask_chunk.sum(dim=(0, 2, 3)).clamp_min(1)
+                squared_intensity_residual.detach().mean(dim=(0, 2, 3))
             )
         optimizer.step()
 
@@ -293,16 +286,6 @@ def solve_study(
                 for patch in patch_batch
             ]
         )
-        measurement_mask_batch = torch.stack(
-            [
-                study.measurement_mask[
-                    :,
-                    patch.y.start : patch.y.start + patch_size,
-                    patch.x.start : patch.x.start + patch_size,
-                ]
-                for patch in patch_batch
-            ]
-        )
 
         (
             objects,
@@ -310,7 +293,6 @@ def solve_study(
             batch_metrics,
         ) = _train_batch(
             measured_intensity_batch,
-            measurement_mask_batch,
             study.illumination_kx,
             study.illumination_ky,
             object_to_capture_ratio=object_to_capture_ratio,
@@ -323,7 +305,6 @@ def solve_study(
         solved_batches.append(
             _SolvedBatch(
                 patches=patch_batch,
-                reconstruction=objects.abs().square(),
                 object=objects,
             )
         )
