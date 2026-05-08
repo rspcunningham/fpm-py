@@ -42,8 +42,7 @@ class SigmoidObject(nn.Module):
         init_amplitude = F.interpolate(
             init_amplitude_low_res.unsqueeze(1),
             scale_factor=object_to_capture_ratio,
-            mode="bilinear",
-            align_corners=False,
+            mode="nearest",
         ).squeeze(1)
         init_amplitude = init_amplitude.detach().clamp(1e-6, 1 - 1e-6)
         self.raw_amplitude = nn.Parameter(torch.logit(init_amplitude).detach())
