@@ -49,7 +49,7 @@ class _SolvedBatch:
     object: Complex[Tensor, "patch_batch object_height object_width"]
 
 
-_MEASUREMENT_FLOOR_QUANTILE = 0.01
+_MEASUREMENT_FLOOR_QUANTILE = 0.0
 _ILLUMINATION_CHUNK_SIZE = 2
 
 
@@ -59,6 +59,9 @@ def _measurement_noise_floor(
     # The square-root data term is a variance-stabilized intensity likelihood.
     # A low empirical floor keeps near-black, low-SNR pixels from having
     # effectively unlimited leverage without imposing any spatial object prior.
+    if _MEASUREMENT_FLOOR_QUANTILE <= 0:
+        return measured_intensity_batch.detach().new_zeros(()).cpu()
+
     flat = measured_intensity_batch.detach().flatten().cpu()
     kth_index = max(1, int(_MEASUREMENT_FLOOR_QUANTILE * flat.numel()))
     return flat.kthvalue(kth_index).values.clamp_min(1e-8)
