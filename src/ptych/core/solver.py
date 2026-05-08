@@ -50,7 +50,7 @@ class _SolvedBatch:
     object: Complex[Tensor, "patch_batch object_height object_width"]
 
 
-_MEASUREMENT_FLOOR_QUANTILE = 0.05
+_MEASUREMENT_FLOOR_QUANTILE = 0.02
 _ILLUMINATION_CHUNK_SIZE = 2
 
 
