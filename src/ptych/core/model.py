@@ -2,12 +2,12 @@ from typing import cast
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from jaxtyping import Float
 from torch import Tensor
 
 from ptych.core.darkfield import DarkfieldBackgrounds, DarkfieldScatter
 from ptych.core.forward import FPMForwardModel
+from ptych.core.intensity_downsample import intensity_downsample
 from ptych.core.object import Object
 from ptych.core.pupil import Pupil
 
@@ -107,22 +107,9 @@ class PtychographyModel(nn.Module):
             self.pupil(),
             phase_ramps,
         )
-        predicted_intensities_full_res = complex_image_fields.abs().square()
-        patch_batch_size, num_illuminations, object_size, _ = complex_image_fields.shape
-        predicted_low_res = F.avg_pool2d(
-            predicted_intensities_full_res.reshape(
-                patch_batch_size * num_illuminations,
-                1,
-                object_size,
-                object_size,
-            ),
-            kernel_size=self.object_to_capture_ratio,
-            stride=self.object_to_capture_ratio,
-        ).reshape(
-            patch_batch_size,
-            num_illuminations,
-            object_size // self.object_to_capture_ratio,
-            object_size // self.object_to_capture_ratio,
+        predicted_low_res = intensity_downsample(
+            complex_image_fields,
+            self.object_to_capture_ratio,
         )
         predicted_low_res = (
             predicted_low_res
