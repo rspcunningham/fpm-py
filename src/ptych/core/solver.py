@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
+import time
 
 import torch
 from jaxtyping import Complex, Float
@@ -11,6 +13,7 @@ from ptych.core.metrics import BatchMetricsRecord, InverseMetrics
 from ptych.core.model import PtychographyModel
 from ptych.core.pupil import pupil_cutoff_cyc_per_px_from_optics
 from ptych.data.study import PtychStudy
+from ptych.data.utils import get_default_device
 
 
 @dataclass
@@ -50,6 +53,8 @@ class _SolvedBatch:
 
 
 DEFAULT_ILLUMINATION_CHUNK_SIZE = 16
+
+type _OptimizerParameterGroup = tuple[str, list[Tensor], float]
 
 
 def _axis_patches(length: int, patch_size: int) -> list[_AxisPatch]:
@@ -136,38 +141,70 @@ def _train_batch(
     pupil_phase_radial_order: int,
     pupil_amplitude_radial_order: int,
     epochs: int,
-    device: str | torch.device,
+    device: str | torch.device | None,
     illumination_chunk_size: int,
 ) -> tuple[
     Complex[Tensor, "patch_batch object_height object_width"],
     Complex[Tensor, "patch_batch object_height object_width"],
     InverseMetrics,
 ]:
-    measured_intensity_batch = measured_intensity_batch.to(device)
+    requested_device = "auto" if device is None else str(device)
+    resolved_device = get_default_device() if device is None else torch.device(device)
+    measured_intensity_batch = measured_intensity_batch.to(resolved_device)
     model = PtychographyModel(
         measured_intensity_batch,
-        illumination_kx.to(device),
-        illumination_ky.to(device),
+        illumination_kx.to(resolved_device),
+        illumination_ky.to(resolved_device),
         object_to_capture_ratio=object_to_capture_ratio,
         pupil_cutoff_cyc_per_px_init=pupil_cutoff_cyc_per_px,
         pupil_phase_radial_order=pupil_phase_radial_order,
         pupil_amplitude_radial_order=pupil_amplitude_radial_order,
-    ).to(device)
+    ).to(resolved_device)
     model.train()
 
-    print("Model parameters:")
-    for name, parameter in model.named_parameters():
-        print(f"  {name}: {parameter.numel():,} {tuple(parameter.shape)}")
-    print(f"  total: {sum(parameter.numel() for parameter in model.parameters()):,}")
+    with torch.no_grad():
+        complex_dtype = str(model.object().dtype)
+
+    parameter_groups: list[_OptimizerParameterGroup] = [
+        ("object", list(model.object.parameters()), 5e-3),
+        ("pupil", list(model.pupil.parameters()), 1e-3),
+        ("illumination_gains", list(model.illumination_gains.parameters()), 1e-2),
+        ("darkfield_backgrounds", list(model.darkfield_backgrounds.parameters()), 1e-2),
+        ("darkfield_scatter", list(model.darkfield_scatter.parameters()), 3e-2),
+    ]
+    optimizer_groups = [
+        {
+            "params": parameters,
+            "lr": lr,
+            "name": name,
+        }
+        for name, parameters, lr in parameter_groups
+    ]
+
+    parameter_count = sum(parameter.numel() for parameter in model.parameters())
+    trainable_parameter_count = sum(
+        parameter.numel() for parameter in model.parameters() if parameter.requires_grad
+    )
+    learning_rates = {name: lr for name, _, lr in parameter_groups}
+
+    print(
+        "Solving batch: "
+        f"requested_device={requested_device}, "
+        f"device={measured_intensity_batch.device}, "
+        f"dtype={measured_intensity_batch.dtype}, "
+        f"complex_dtype={complex_dtype}, "
+        f"captures={tuple(measured_intensity_batch.shape)}, "
+        f"parameters={parameter_count:,}, "
+        f"trainable_parameters={trainable_parameter_count:,}"
+    )
+    print(
+        "Optimizer: "
+        "AdamW, "
+        + ", ".join(f"{name}_lr={lr:g}" for name, lr in learning_rates.items())
+    )
 
     optimizer = torch.optim.AdamW(
-        [
-            {"params": model.object.parameters(), "lr": 5e-3},
-            {"params": model.pupil.parameters(), "lr": 1e-3},
-            {"params": model.illumination_gains.parameters(), "lr": 1e-2},
-            {"params": model.darkfield_backgrounds.parameters(), "lr": 1e-2},
-            {"params": model.darkfield_scatter.parameters(), "lr": 3e-2},
-        ],
+        optimizer_groups,
         weight_decay=0.0,
     )
 
@@ -183,6 +220,8 @@ def _train_batch(
         raise ValueError(
             f"illumination_chunk_size must be positive; got {illumination_chunk_size}"
         )
+
+    start_time = time.perf_counter()
 
     for epoch in tqdm(range(epochs), desc="Solving inverse model..."):
         optimizer.zero_grad(set_to_none=True)
@@ -218,11 +257,30 @@ def _train_batch(
         patch_loss_history[epoch] = patch_loss
         illumination_loss_history[epoch] = illumination_loss
 
+    elapsed_seconds = time.perf_counter() - start_time
+    loss_values = loss_history.cpu().tolist()
+    finite_loss_values = [value for value in loss_values if math.isfinite(value)]
+    losses_finite = len(finite_loss_values) == len(loss_values)
     metrics: InverseMetrics = {
-        "loss": loss_history.cpu().tolist(),
+        "loss": loss_values,
         "patch_loss": patch_loss_history.cpu().tolist(),
         "illumination_loss": illumination_loss_history.cpu().tolist(),
+        "summary": {
+            "elapsed_seconds": elapsed_seconds,
+            "losses_finite": losses_finite,
+            "final_loss": loss_values[-1] if loss_values else float("nan"),
+            "best_loss": min(finite_loss_values)
+            if finite_loss_values
+            else float("nan"),
+        },
     }
+    print(
+        "Optimization summary: "
+        f"final_loss={metrics['summary']['final_loss']:.6g}, "
+        f"best_loss={metrics['summary']['best_loss']:.6g}, "
+        f"elapsed_seconds={elapsed_seconds:.2f}, "
+        f"losses_finite={metrics['summary']['losses_finite']}"
+    )
     with torch.no_grad():
         return (
             model.object().detach().cpu(),
@@ -239,7 +297,7 @@ def solve_study(
     pupil_phase_radial_order: int = 2,
     pupil_amplitude_radial_order: int = 0,
     epochs: int = 1000,
-    device: str | torch.device = "cpu",
+    device: str | torch.device | None = None,
     patch_batch_size: int = 1,
     illumination_chunk_size: int = DEFAULT_ILLUMINATION_CHUNK_SIZE,
 ) -> StudySolveResult:

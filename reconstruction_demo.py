@@ -5,6 +5,7 @@ import numpy as np
 
 from ptych import PtychStudy, solve_study
 from ptych.core.metric_plots import save_metrics_summary
+from ptych.data.utils import get_default_device
 
 dataset = "usaf-test-dark"
 
@@ -22,7 +23,7 @@ PATCH_BATCH_SIZE = 16
 ILLUMINATION_CHUNK_SIZE = 145
 
 # Optimization and runtime settings
-TORCH_DEVICE = "mps"  # Switch to "cpu" or "cuda".
+TORCH_DEVICE = get_default_device()
 EPOCHS = 500
 
 # Output directory
@@ -34,6 +35,7 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 study = PtychStudy.load(dataset, crop_size=CROP_SIZE)
 
 # Run reconstruction.
+print(f"Using torch device: {TORCH_DEVICE}")
 result = solve_study(
     study,
     patch_size=PATCH_SIZE,
@@ -47,15 +49,23 @@ result = solve_study(
 )
 
 # Save reconstruction artifacts.
+metrics_plot_path = OUTPUT_DIR / "reconstruction_metrics.png"
+object_path = OUTPUT_DIR / "object.npy"
+capture_path = OUTPUT_DIR / "capture_0.npy"
+metrics_json_path = OUTPUT_DIR / "metrics.json"
+
 save_metrics_summary(
     result.metrics,
-    path=OUTPUT_DIR / "reconstruction_metrics.png",
+    path=metrics_plot_path,
 )
 
-np.save(OUTPUT_DIR / "object.npy", result.object.cpu().numpy())
-np.save(OUTPUT_DIR / "capture_0.npy", result.capture_0.cpu().numpy())
-with (OUTPUT_DIR / "metrics.json").open("w") as file:
+np.save(object_path, result.object.cpu().numpy())
+np.save(capture_path, result.capture_0.cpu().numpy())
+with metrics_json_path.open("w") as file:
     json.dump(result.metrics, file)
 print("Reconstruction complete!")
 print(f"Reconstructed object tensor: {result.object.shape}")
-print(f"Results written to {OUTPUT_DIR}")
+print(f"Saved object: {object_path}")
+print(f"Saved capture: {capture_path}")
+print(f"Saved metrics JSON: {metrics_json_path}")
+print(f"Saved metrics plot: {metrics_plot_path}")
