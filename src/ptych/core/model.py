@@ -107,10 +107,7 @@ class PtychographyModel(nn.Module):
             self.pupil(),
             phase_ramps,
         )
-        predicted_intensities_full_res = (
-            complex_image_fields.abs().square()
-            * self.illumination_gains()[illumination_slice][None, :, None, None]
-        )
+        predicted_intensities_full_res = complex_image_fields.abs().square()
         patch_batch_size, num_illuminations, object_size, _ = complex_image_fields.shape
         predicted_low_res = F.avg_pool2d(
             predicted_intensities_full_res.reshape(
@@ -126,6 +123,10 @@ class PtychographyModel(nn.Module):
             num_illuminations,
             object_size // self.object_to_capture_ratio,
             object_size // self.object_to_capture_ratio,
+        )
+        predicted_low_res = (
+            predicted_low_res
+            * self.illumination_gains()[illumination_slice][None, :, None, None]
         )
         return (
             predicted_low_res
