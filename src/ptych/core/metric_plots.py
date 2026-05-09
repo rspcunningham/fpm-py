@@ -3,7 +3,6 @@ from typing import cast
 
 import numpy as np
 import numpy.typing as npt
-import seaborn as sns
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
@@ -18,11 +17,13 @@ def save_metrics_summary(
     *,
     path: Path,
 ) -> None:
-    sns.set_theme(style="darkgrid")
     fig, axes = cast(
         tuple[Figure, tuple[Axes, Axes]], plt.subplots(1, 2, figsize=(14, 5))
     )
     ax_loss, ax_illumination = axes
+    for ax in axes:
+        ax.grid(color="0.85", linewidth=0.8)
+        ax.set_axisbelow(True)
 
     for batch_idx, record in enumerate(metrics):
         patches = record["patches"]
