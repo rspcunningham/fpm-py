@@ -16,6 +16,15 @@ from ptych.data.study import PtychStudy
 from ptych.data.utils import get_default_device
 
 
+@dataclass(frozen=True)
+class SolverLearningRates:
+    object: float = 5e-3
+    pupil: float = 1e-3
+    illumination_gains: float = 1e-2
+    darkfield_backgrounds: float = 1e-2
+    darkfield_scatter: float = 3e-2
+
+
 @dataclass
 class StudySolveResult:
     object: Complex[Tensor, "object_height object_width"]
@@ -143,6 +152,7 @@ def _train_batch(
     epochs: int,
     device: str | torch.device | None,
     illumination_chunk_size: int,
+    learning_rates: SolverLearningRates,
 ) -> tuple[
     Complex[Tensor, "patch_batch object_height object_width"],
     Complex[Tensor, "patch_batch object_height object_width"],
@@ -166,11 +176,23 @@ def _train_batch(
         complex_dtype = str(model.object().dtype)
 
     parameter_groups: list[_OptimizerParameterGroup] = [
-        ("object", list(model.object.parameters()), 5e-3),
-        ("pupil", list(model.pupil.parameters()), 1e-3),
-        ("illumination_gains", list(model.illumination_gains.parameters()), 1e-2),
-        ("darkfield_backgrounds", list(model.darkfield_backgrounds.parameters()), 1e-2),
-        ("darkfield_scatter", list(model.darkfield_scatter.parameters()), 3e-2),
+        ("object", list(model.object.parameters()), learning_rates.object),
+        ("pupil", list(model.pupil.parameters()), learning_rates.pupil),
+        (
+            "illumination_gains",
+            list(model.illumination_gains.parameters()),
+            learning_rates.illumination_gains,
+        ),
+        (
+            "darkfield_backgrounds",
+            list(model.darkfield_backgrounds.parameters()),
+            learning_rates.darkfield_backgrounds,
+        ),
+        (
+            "darkfield_scatter",
+            list(model.darkfield_scatter.parameters()),
+            learning_rates.darkfield_scatter,
+        ),
     ]
     optimizer_groups = [
         {
@@ -185,7 +207,7 @@ def _train_batch(
     trainable_parameter_count = sum(
         parameter.numel() for parameter in model.parameters() if parameter.requires_grad
     )
-    learning_rates = {name: lr for name, _, lr in parameter_groups}
+    learning_rate_by_group = {name: lr for name, _, lr in parameter_groups}
 
     print(
         "Solving batch: "
@@ -200,7 +222,7 @@ def _train_batch(
     print(
         "Optimizer: "
         "AdamW, "
-        + ", ".join(f"{name}_lr={lr:g}" for name, lr in learning_rates.items())
+        + ", ".join(f"{name}_lr={lr:g}" for name, lr in learning_rate_by_group.items())
     )
 
     optimizer = torch.optim.AdamW(
@@ -300,6 +322,7 @@ def solve_study(
     device: str | torch.device | None = None,
     patch_batch_size: int = 1,
     illumination_chunk_size: int = DEFAULT_ILLUMINATION_CHUNK_SIZE,
+    learning_rates: SolverLearningRates = SolverLearningRates(),
 ) -> StudySolveResult:
 
     capture_0 = study.captures[0]
@@ -351,6 +374,7 @@ def solve_study(
             epochs=epochs,
             device=device,
             illumination_chunk_size=illumination_chunk_size,
+            learning_rates=learning_rates,
         )
         solved_batches.append(
             _SolvedBatch(
