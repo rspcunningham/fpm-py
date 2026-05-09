@@ -8,7 +8,7 @@ import torch
 from jaxtyping import Float
 
 from ptych.data.parse import parse_manifest
-from ptych.data.preprocess import preprocess_study_data
+from ptych.data.preprocess import ImageCrop, preprocess_study_data
 from ptych.data.types import Capture, StudyManifest
 
 
@@ -44,7 +44,7 @@ class PtychStudy:
         cls,
         dataset: str | Path,
         *,
-        crop_size: int | None = None,
+        crop: ImageCrop | None = None,
     ) -> "PtychStudy":
         candidate_path = Path(dataset)
         if candidate_path.exists():
@@ -84,7 +84,7 @@ class PtychStudy:
         ) = preprocess_study_data(
             manifest,
             raw_images,
-            crop_size=crop_size,
+            crop=crop,
         )
 
         return cls(

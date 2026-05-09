@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from dataclasses import dataclass
 
 import torch
 from jaxtyping import Float
@@ -14,6 +15,31 @@ _RGB_REFERENCE_WAVELENGTHS_M = (
 )
 
 
+@dataclass(frozen=True, kw_only=True)
+class ImageCrop:
+    top: int
+    left: int
+    width: int
+    height: int
+
+    def bounds(
+        self, *, image_height: int, image_width: int
+    ) -> tuple[int, int, int, int]:
+        if self.top < 0 or self.left < 0:
+            raise ValueError(f"Crop top/left must be non-negative, got {self}")
+        if self.width <= 0 or self.height <= 0:
+            raise ValueError(f"Crop width/height must be positive, got {self}")
+
+        bottom = self.top + self.height
+        right = self.left + self.width
+        if bottom > image_height or right > image_width:
+            raise ValueError(
+                f"Crop {self} exceeds capture dimensions ({image_height}x{image_width})"
+            )
+
+        return self.top, bottom, self.left, right
+
+
 def _shift_bayer_pattern(pattern: str, y_offset: int, x_offset: int) -> str:
     tile = ((pattern[0], pattern[1]), (pattern[2], pattern[3]))
     return "".join(
@@ -21,20 +47,37 @@ def _shift_bayer_pattern(pattern: str, y_offset: int, x_offset: int) -> str:
     )
 
 
-def _centered_square_bounds(
+def centered_square_crop(
     *,
     height: int,
     width: int,
-    size: int,
-) -> tuple[int, int, int, int]:
-    if size > width or size > height:
+    crop_size: int,
+) -> ImageCrop:
+    if crop_size <= 0:
+        raise ValueError(f"Centered square size must be positive, got {crop_size}")
+    if crop_size > width or crop_size > height:
         raise ValueError(
-            f"Centered square size ({size}) exceeds capture dimensions ({height}x{width})"
+            f"Centered square size ({crop_size}) exceeds capture dimensions ({height}x{width})"
         )
 
-    y_top = (height - size) // 2
-    x_left = (width - size) // 2
-    return y_top, y_top + size, x_left, x_left + size
+    return ImageCrop(
+        top=(height - crop_size) // 2,
+        left=(width - crop_size) // 2,
+        width=crop_size,
+        height=crop_size,
+    )
+
+
+def _crop_bounds(
+    crop: ImageCrop | None,
+    *,
+    image_height: int,
+    image_width: int,
+) -> tuple[int, int, int, int]:
+    if crop is None:
+        return 0, image_height, 0, image_width
+
+    return crop.bounds(image_height=image_height, image_width=image_width)
 
 
 def _channel_index_for_wavelength(wavelength_m: float) -> int:
@@ -58,7 +101,7 @@ def preprocess_study_data(
     manifest: StudyManifest,
     raw_images: Sequence[Float[torch.Tensor, "height width"]],
     *,
-    crop_size: int | None = None,
+    crop: ImageCrop | None = None,
 ) -> tuple[
     list[Capture],
     Float[torch.Tensor, "illumination height width"],
@@ -76,15 +119,11 @@ def preprocess_study_data(
         manifest.capture_dimensions.height,
         manifest.capture_dimensions.width,
     )
-    if crop_size is None:
-        y_top, y_bottom = 0, expected_shape[0]
-        x_left, x_right = 0, expected_shape[1]
-    else:
-        y_top, y_bottom, x_left, x_right = _centered_square_bounds(
-            height=expected_shape[0],
-            width=expected_shape[1],
-            size=crop_size,
-        )
+    y_top, y_bottom, x_left, x_right = _crop_bounds(
+        crop,
+        image_height=expected_shape[0],
+        image_width=expected_shape[1],
+    )
 
     image_slice = (slice(y_top, y_bottom), slice(x_left, x_right))
     bayer_pattern = _shift_bayer_pattern("RGGB", y_top, x_left)

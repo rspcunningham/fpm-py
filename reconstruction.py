@@ -4,16 +4,19 @@ from pathlib import Path
 
 import numpy as np
 
-from ptych import PtychStudy, SolverLearningRates, solve_study
+from ptych import ImageCrop, PtychStudy, SolverLearningRates, solve_study
 from ptych.core.metric_plots import save_metrics_summary
 from ptych.data.utils import get_default_device
 
+# Select dataset
 dataset = "malaria-test"
 
 CROP_SIZE = 416  # should be the same as PATCH_SIZE if practical
+CROP_TOP = 1024
+CROP_LEFT = 1440
 
 # Reconstruction model settings
-OBJECT_TO_CAPTURE_RATIO = 4
+OBJECT_TO_CAPTURE_RATIO = 4  # prefer 2 or 4
 PUPIL_PHASE_RADIAL_ORDER = 3
 PUPIL_AMPLITUDE_RADIAL_ORDER = 0
 
@@ -22,8 +25,7 @@ PATCH_SIZE = 416  # prefer power of 2 or 384, 416, 448, 480, 512
 PATCH_BATCH_SIZE = 16
 ILLUMINATION_CHUNK_SIZE = 145
 
-# Optimization and runtime settings
-TORCH_DEVICE = get_default_device()
+# Runtime settings
 EPOCHS = 60
 LEARNING_RATES = SolverLearningRates(
     object=1e-1,
@@ -38,10 +40,16 @@ timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 OUTPUT_DIR = Path(f"results/{dataset}-{timestamp}")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-study = PtychStudy.load(dataset, crop_size=CROP_SIZE)
+study = PtychStudy.load(
+    dataset,
+    crop=ImageCrop(top=CROP_TOP, left=CROP_LEFT, width=CROP_SIZE, height=CROP_SIZE),
+)
 
-# Run reconstruction.
+# Get GPU
+TORCH_DEVICE = get_default_device()
 print(f"Using torch device: {TORCH_DEVICE}")
+
+# Run reconstruction
 result = solve_study(
     study,
     patch_size=PATCH_SIZE,
