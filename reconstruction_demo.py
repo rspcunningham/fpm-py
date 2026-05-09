@@ -8,17 +8,21 @@ from ptych.core.metric_plots import save_metrics_summary
 
 dataset = "usaf-test-dark"
 
-# Reconstruction geometry settings
-PATCH_SIZE = 400
+# Problem definition
 CROP_SIZE = 400
 
+# Reconstruction model settings
 OBJECT_TO_CAPTURE_RATIO = 2
 PUPIL_PHASE_RADIAL_ORDER = 3
 PUPIL_AMPLITUDE_RADIAL_ORDER = 0
 
+# Memory/scaling settings
+PATCH_SIZE = 400
+PATCH_BATCH_SIZE = 16
+ILLUMINATION_CHUNK_SIZE = 16
+
 # Optimization and runtime settings
 TORCH_DEVICE = "mps"  # Switch to "cpu" or "cuda".
-PATCH_BATCH_SIZE = 16
 EPOCHS = 500
 
 # Output directory
@@ -39,6 +43,7 @@ result = solve_study(
     epochs=EPOCHS,
     device=TORCH_DEVICE,
     patch_batch_size=PATCH_BATCH_SIZE,
+    illumination_chunk_size=ILLUMINATION_CHUNK_SIZE,
 )
 
 # Save reconstruction artifacts.

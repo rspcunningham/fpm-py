@@ -49,7 +49,7 @@ class _SolvedBatch:
     object: Complex[Tensor, "patch_batch object_height object_width"]
 
 
-_ILLUMINATION_CHUNK_SIZE = 2
+DEFAULT_ILLUMINATION_CHUNK_SIZE = 16
 
 
 def _axis_patches(length: int, patch_size: int) -> list[_AxisPatch]:
@@ -137,6 +137,7 @@ def _train_batch(
     pupil_amplitude_radial_order: int,
     epochs: int,
     device: str | torch.device,
+    illumination_chunk_size: int,
 ) -> tuple[
     Complex[Tensor, "patch_batch object_height object_width"],
     Complex[Tensor, "patch_batch object_height object_width"],
@@ -178,15 +179,19 @@ def _train_batch(
         num_illuminations,
     )
     patch_loss_denominator = num_illuminations * height * width
+    if illumination_chunk_size <= 0:
+        raise ValueError(
+            f"illumination_chunk_size must be positive; got {illumination_chunk_size}"
+        )
 
     for epoch in tqdm(range(epochs), desc="Solving inverse model..."):
         optimizer.zero_grad(set_to_none=True)
         loss = measured_intensity_batch.new_zeros(())
         patch_loss = measured_intensity_batch.new_zeros(patch_batch_size)
         illumination_loss = measured_intensity_batch.new_zeros(num_illuminations)
-        for illumination_start in range(0, num_illuminations, _ILLUMINATION_CHUNK_SIZE):
+        for illumination_start in range(0, num_illuminations, illumination_chunk_size):
             illumination_end = min(
-                illumination_start + _ILLUMINATION_CHUNK_SIZE,
+                illumination_start + illumination_chunk_size,
                 num_illuminations,
             )
             illumination_slice = slice(illumination_start, illumination_end)
@@ -212,8 +217,6 @@ def _train_batch(
         loss_history[epoch] = loss
         patch_loss_history[epoch] = patch_loss
         illumination_loss_history[epoch] = illumination_loss
-        if torch.backends.mps.is_available():
-            torch.mps.empty_cache()
 
     metrics: InverseMetrics = {
         "loss": loss_history.cpu().tolist(),
@@ -238,6 +241,7 @@ def solve_study(
     epochs: int = 1000,
     device: str | torch.device = "cpu",
     patch_batch_size: int = 1,
+    illumination_chunk_size: int = DEFAULT_ILLUMINATION_CHUNK_SIZE,
 ) -> StudySolveResult:
 
     capture_0 = study.captures[0]
@@ -288,6 +292,7 @@ def solve_study(
             pupil_amplitude_radial_order=pupil_amplitude_radial_order,
             epochs=epochs,
             device=device,
+            illumination_chunk_size=illumination_chunk_size,
         )
         solved_batches.append(
             _SolvedBatch(
