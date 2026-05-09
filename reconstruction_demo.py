@@ -10,7 +10,9 @@ from ptych.data.utils import get_default_device
 dataset = "usaf-test-dark"
 
 # Problem definition
-CROP_SIZE = 400
+# MPS FFT throughput is shape-sensitive. In local profiling, crop sizes 384, 416,
+# 448, 480, and 512 were efficient; 400 and 432 were comparatively slow.
+CROP_SIZE = 416
 
 # Reconstruction model settings
 OBJECT_TO_CAPTURE_RATIO = 2
@@ -18,7 +20,7 @@ PUPIL_PHASE_RADIAL_ORDER = 3
 PUPIL_AMPLITUDE_RADIAL_ORDER = 0
 
 # Memory/scaling settings
-PATCH_SIZE = 400
+PATCH_SIZE = 416
 PATCH_BATCH_SIZE = 16
 ILLUMINATION_CHUNK_SIZE = 145
 
