@@ -10,8 +10,7 @@ readme = "README.md"
 requires-python = ">=3.13,<3.14"
 license = "MIT"
 authors = [
-    {name = "Robin Cunningham", email = "rspcunningham@gmail.com"},
-    {name = "Sammy Farnum", email = "sfarnumm1132@gmail.com"}
+    {name = "Robin Cunningham", email = "rspcunningham@gmail.com"}
 ]
 dependencies = [
     "jaxtyping>=0.3.3",
@@ -25,6 +24,9 @@ dependencies = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ptych"]
+
+[project.scripts]
+ptych-dataset = "ptych.data.upload.cli:main"
 
 
 [dependency-groups]
