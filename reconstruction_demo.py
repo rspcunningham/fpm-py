@@ -19,7 +19,7 @@ PUPIL_AMPLITUDE_RADIAL_ORDER = 0
 # Memory/scaling settings
 PATCH_SIZE = 400
 PATCH_BATCH_SIZE = 16
-ILLUMINATION_CHUNK_SIZE = 16
+ILLUMINATION_CHUNK_SIZE = 145
 
 # Optimization and runtime settings
 TORCH_DEVICE = "mps"  # Switch to "cpu" or "cuda".

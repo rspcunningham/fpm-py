@@ -81,13 +81,15 @@ class PtychographyModel(nn.Module):
             object_to_capture_ratio=object_to_capture_ratio,
             pupil_cutoff_cyc_per_px=pupil_cutoff_cyc_per_px_init,
         )
-        self.forward_model = FPMForwardModel(object_grid_size)
-        self.register_buffer(
-            "illumination_kx", illumination_kx / object_to_capture_ratio
+        illumination_kx = illumination_kx / object_to_capture_ratio
+        illumination_ky = illumination_ky / object_to_capture_ratio
+        self.forward_model = FPMForwardModel(
+            object_grid_size,
+            illumination_kx,
+            illumination_ky,
         )
-        self.register_buffer(
-            "illumination_ky", illumination_ky / object_to_capture_ratio
-        )
+        self.register_buffer("illumination_kx", illumination_kx)
+        self.register_buffer("illumination_ky", illumination_ky)
 
     def forward(
         self,
@@ -97,13 +99,13 @@ class PtychographyModel(nn.Module):
             illumination_slice = slice(None)
 
         object_tensor = self.object()
-        illumination_kx = cast(Tensor, self.illumination_kx)[illumination_slice]
-        illumination_ky = cast(Tensor, self.illumination_ky)[illumination_slice]
-        complex_image_fields = self.forward_model(
+        phase_ramps = cast(Tensor, self.forward_model.cached_phase_ramps)[
+            illumination_slice
+        ]
+        complex_image_fields = self.forward_model.forward_with_phase_ramps(
             object_tensor,
             self.pupil(),
-            illumination_kx,
-            illumination_ky,
+            phase_ramps,
         )
         complex_image_fields = complex_image_fields * torch.sqrt(
             self.illumination_gains()[illumination_slice][None, :, None, None]
