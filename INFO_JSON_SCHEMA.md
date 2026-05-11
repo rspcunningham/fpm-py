@@ -4,9 +4,9 @@ This document describes the schema for `info.json` files, which store `StudyMani
 
 ## Overview
 
-The `info.json` file is the manifest for a Fourier ptychography study. It contains metadata about the optical system, along with a list of captures—each capture representing a single image taken with specific illumination parameters.
+The `info.json` file is the manifest for a Fourier ptychography study. It contains optical system parameters, capture image dimensions, Bayer sensor layout, and a list of captures, each representing a single image taken with specific illumination parameters.
 
-**Note:** Darkfield images are represented as captures with no LED positions and are used for dark-frame subtraction during preprocessing. Multiplexed images (captures with multiple LEDs on simultaneously) and captures at different wavelengths are supported in the schema but not yet processed; loading them for reconstruction will raise an error.
+**Note:** Darkfield images are represented as captures with no LED positions and are used for dark-frame subtraction during preprocessing. Multiplexed images (captures with multiple LEDs on simultaneously) are supported in the schema but not yet processed; loading them for reconstruction will raise an error. Color studies can be loaded as independent monochrome studies with `PtychStudy.load_by_channel()`.
 
 ## Units
 
@@ -44,9 +44,9 @@ Formally, this follows the left-hand rule with the Z-axis pointing from sample t
 | `numerical_aperture` | number | Yes | Estimated objective numerical aperture. This is a property of the capture hardware, not a reconstruction runtime setting. It is used to initialize the pupil radius and does not need to be absolutely precise. |
 | `sensor_pixel_size` | number | Yes | Physical size of sensor pixels in **meters**. |
 | `capture_dimensions` | object | Yes | Dimensions of all capture images in pixels. See `CaptureDimensions` below. |
+| `bayer_pattern` | string or null | Yes | Full-frame Bayer color filter array pattern. Valid strings are `"RGGB"`, `"GRBG"`, `"GBRG"`, and `"BGGR"`. Use `null` only for future non-Bayer datasets; loaders currently raise `NotImplementedError` for this case. |
 | `captures` | array | Yes | List of illuminated `Capture` or darkfield capture objects (see below). |
 | `version` | string | No | Schema version. Defaults to `"1.0"` if omitted. |
-| `metadata` | object | No | Arbitrary user-defined metadata (key-value pairs). |
 
 ### Capture Object
 
@@ -57,6 +57,7 @@ Each capture represents a single image acquired with specific illumination.
 | `filename` | string | Yes | Basename of the image file (e.g., `"im_0.npy"`). Files are stored in the `captures/` subdirectory. Must be a `.npy` file (NumPy array). |
 | `wavelength` | number | Illuminated captures only | Captured (ie. what the sensor measured) wavelength in **meters**. Omit this for darkfield captures. |
 | `led_positions` | array | Yes | Array of `LedPosition` objects. Typically contains one element per illuminated capture. An empty array indicates a darkfield image (no illumination). |
+| `channel` | string or null | Yes | Bayer color channel represented by this capture. Valid strings are `"R"`, `"G"`, and `"B"`. Use `null` only when root `bayer_pattern` is also `null`. |
 | `captured_at` | string (ISO 8601) | No | Timestamp when the image was captured. Format: `YYYY-MM-DDTHH:MM:SS` or `YYYY-MM-DDTHH:MM:SS.mmm` |
 | `exposure` | number | No | Exposure time in **milliseconds**. |
 
@@ -86,7 +87,18 @@ All image files must be:
 - **Format**: NumPy array files (`.npy`) containing a single-channel, 2D array
 - **Location**: Stored in a `captures/` subdirectory relative to `info.json`
 - **Filename convention**: The `filename` field in each capture contains only the basename (e.g., `"im_0.npy"`), not the full path. Files are always located at `captures/<filename>`
-- **Shape**: All captures must have identical dimensions matching the `capture_dimensions` field. Dimensions are specified as `{width, height}` where width is columns and height is rows (note: NumPy arrays store shape as `(height, width)`). 
+- **Shape**: All captures must have identical dimensions matching the `capture_dimensions` field. Dimensions are specified as `{width, height}` where width is columns and height is rows (note: NumPy arrays store shape as `(height, width)`).
+
+## Bayer Channels
+
+Raw Bayer-mosaicked sensor frames declare their full-frame color filter array through root-level `bayer_pattern`. Each capture declares the reconstructed channel it contributes through `channel`.
+
+`bayer_pattern` and capture `channel` values must be consistent:
+
+- If `bayer_pattern` is one of the supported string values, every capture must have a non-null `channel`.
+- If `bayer_pattern` is `null`, every capture must have `channel: null`; this schema is accepted by the parser, but preprocessing currently raises `NotImplementedError`.
+
+Darkfield captures are still represented in `captures` with `led_positions: []` and no `wavelength` field. For Bayer datasets, darkfield captures must still declare a `channel`; preprocessing subtracts darkfields only from illuminated captures with the same channel.
 
 ## Example
 
@@ -98,15 +110,13 @@ All image files must be:
     "numerical_aperture": 0.25,
     "sensor_pixel_size": 0.00000167,
     "capture_dimensions": {"width": 2048, "height": 2048},
+    "bayer_pattern": "RGGB",
     "version": "1.0",
-    "metadata": {
-        "camera_model": "FLIR BFS-U3-50S5C",
-        "notes": "Test acquisition with USAF target"
-    },
     "captures": [
         {
             "filename": "im_0_R.npy",
             "wavelength": 6.25e-7,
+            "channel": "R",
             "captured_at": "2025-01-14T10:30:01.042",
             "exposure": 10,
             "led_positions": [
@@ -120,6 +130,7 @@ All image files must be:
         {
             "filename": "im_0_G.npy",
             "wavelength": 5.3e-7,
+            "channel": "G",
             "captured_at": "2025-01-14T10:30:01.103",
             "exposure": 8,
             "led_positions": [
@@ -133,6 +144,7 @@ All image files must be:
         {
             "filename": "im_0_B.npy",
             "wavelength": 4.7e-7,
+            "channel": "B",
             "captured_at": "2025-01-14T10:30:01.178",
             "exposure": 12,
             "led_positions": [
@@ -146,6 +158,7 @@ All image files must be:
         {
             "filename": "im_1_R.npy",
             "wavelength": 6.25e-7,
+            "channel": "R",
             "captured_at": "2025-01-14T10:30:01.256",
             "exposure": 10,
             "led_positions": [
@@ -159,6 +172,7 @@ All image files must be:
         {
             "filename": "im_1_G.npy",
             "wavelength": 5.3e-7,
+            "channel": "G",
             "captured_at": "2025-01-14T10:30:01.317",
             "exposure": 8,
             "led_positions": [
@@ -172,6 +186,7 @@ All image files must be:
         {
             "filename": "im_1_B.npy",
             "wavelength": 4.7e-7,
+            "channel": "B",
             "captured_at": "2025-01-14T10:30:01.392",
             "exposure": 12,
             "led_positions": [
@@ -183,8 +198,23 @@ All image files must be:
             ]
         },
         {
-            "filename": "darkfield_0.npy",
+            "filename": "darkfield_R.npy",
+            "channel": "R",
             "captured_at": "2025-01-14T10:30:01.503",
+            "exposure": 50,
+            "led_positions": []
+        },
+        {
+            "filename": "darkfield_G.npy",
+            "channel": "G",
+            "captured_at": "2025-01-14T10:30:01.564",
+            "exposure": 50,
+            "led_positions": []
+        },
+        {
+            "filename": "darkfield_B.npy",
+            "channel": "B",
+            "captured_at": "2025-01-14T10:30:01.625",
             "exposure": 50,
             "led_positions": []
         }
@@ -202,3 +232,4 @@ When creating `info.json` files programmatically:
 4. **led_positions**: Must be an array. Use an empty array `[]` for darkfield images (no illumination). For standard captures, typically contains one LED position
 5. **wavelength**: Common values are approximately `4.7e-7` (blue), `5.3e-7` (green), `6.25e-7` (red)
 6. **numerical_aperture**: Estimated objective NA for the capture hardware, for example `0.13` or `0.25`. This initializes the pupil radius; it does not need to be absolutely precise.
+7. **bayer_pattern/channel**: Either set `bayer_pattern` to a valid Bayer pattern and every capture `channel` to `"R"`, `"G"`, or `"B"`, or set `bayer_pattern: null` and every capture `channel: null`.

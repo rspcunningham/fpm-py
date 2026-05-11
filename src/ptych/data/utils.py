@@ -60,30 +60,31 @@ def prepare_captures(
     Returns:
         (valid_captures, wavelength, illumination_kx, illumination_ky)
     """
-    # Filter out darkfield captures
     valid_captures: list[Capture] = [
         cap for cap in manifest.captures if is_illuminated_capture(cap)
     ]
+    if not valid_captures:
+        raise ValueError("Study manifest has no illuminated captures")
 
-    # Assert single wavelength
-    wavelengths = list({cap.wavelength for cap in valid_captures})
-    assert len(wavelengths) == 1, (
-        f"All captures must have the same wavelength. Found: {wavelengths}"
-    )
+    wavelengths = sorted({cap.wavelength for cap in valid_captures})
+    if len(wavelengths) != 1:
+        raise ValueError(
+            "PtychStudy requires one illuminated wavelength. "
+            f"Found {wavelengths}; use PtychStudy.load_by_channel()."
+        )
     wavelength = wavelengths[0]
 
-    # Assert single LED per capture
     for i, cap in enumerate(valid_captures):
-        assert len(cap.led_positions) == 1, (
-            f"Multi-LED captures not supported. "
-            f"Capture {i} ({cap.filename}) has {len(cap.led_positions)} LEDs."
-        )
+        if len(cap.led_positions) != 1:
+            raise ValueError(
+                "Multi-LED captures not supported. "
+                f"Capture {i} ({cap.filename}) has {len(cap.led_positions)} LEDs."
+            )
 
-    # Compute k-vectors
     k_vectors = [
         compute_k_camera(
             cap.led_positions[0],
-            wavelength,
+            cap.wavelength,
             manifest.sensor_pixel_size,
             manifest.magnification,
         )

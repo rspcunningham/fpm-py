@@ -90,12 +90,6 @@ def validate_dataset(dataset_dir: str | Path) -> ValidatedDataset:
     if not illuminated:
         raise DatasetValidationError("Dataset has no illuminated captures")
 
-    wavelengths = {capture.wavelength for capture in illuminated}
-    if len(wavelengths) != 1:
-        raise DatasetValidationError(
-            f"All illuminated captures must use one wavelength. Found: {sorted(wavelengths)}"
-        )
-
     multi_led = [
         capture.filename for capture in illuminated if len(capture.led_positions) != 1
     ]

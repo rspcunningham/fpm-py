@@ -8,8 +8,13 @@ import torch
 from jaxtyping import Float
 
 from ptych.data.parse import parse_manifest
-from ptych.data.preprocess import ImageCrop, preprocess_study_data
-from ptych.data.types import Capture, StudyManifest
+from ptych.data.preprocess import (
+    ImageCrop,
+    PreprocessedStudyData,
+    preprocess_study_data_by_channel,
+    preprocess_study_data,
+)
+from ptych.data.types import Capture, ColorChannel, StudyManifest
 
 
 class PtychStudy:
@@ -46,35 +51,7 @@ class PtychStudy:
         *,
         crop: ImageCrop | None = None,
     ) -> "PtychStudy":
-        candidate_path = Path(dataset)
-        if candidate_path.exists():
-            dir_path = candidate_path
-        else:
-            from ptych.data.download.dataset_cache import NextcloudDatasetCache
-
-            cache = NextcloudDatasetCache()
-            dir_path = cache.fetch_dataset(str(dataset))
-
-        manifest_path = dir_path / "info.json"
-        with open(manifest_path) as f:
-            manifest = parse_manifest(cast(dict[str, object], json.load(f)))
-        expected_shape = (
-            manifest.capture_dimensions.height,
-            manifest.capture_dimensions.width,
-        )
-        raw_images: list[Float[torch.Tensor, "height width"]] = []
-        for cap in manifest.captures:
-            img_path = dir_path / "captures" / cap.filename
-            img = cast(npt.NDArray[np.float64], np.load(img_path, mmap_mode="r"))
-
-            assert img.ndim == 2, (
-                f"Image must be 2D, got {img.ndim}D for {cap.filename}"
-            )
-            assert img.shape == expected_shape, (
-                f"Image dimensions don't match manifest. "
-                f"Expected {expected_shape} (height, width), got {img.shape} for {cap.filename}"
-            )
-            raw_images.append(torch.from_numpy(np.array(img, dtype=np.float32)))
+        manifest, raw_images = _load_manifest_and_raw_images(dataset)
 
         (
             capture_metadata,
@@ -94,3 +71,69 @@ class PtychStudy:
             illumination_kx=illumination_kx,
             illumination_ky=illumination_ky,
         )
+
+    @classmethod
+    def load_by_channel(
+        cls,
+        dataset: str | Path,
+        *,
+        crop: ImageCrop | None = None,
+    ) -> dict[ColorChannel, "PtychStudy"]:
+        manifest, raw_images = _load_manifest_and_raw_images(dataset)
+        preprocessed: dict[ColorChannel, PreprocessedStudyData] = (
+            preprocess_study_data_by_channel(
+                manifest,
+                raw_images,
+                crop=crop,
+            )
+        )
+
+        return {
+            channel: cls(
+                manifest=data.manifest,
+                capture_metadata=data.capture_metadata,
+                captures=data.captures,
+                illumination_kx=data.illumination_kx,
+                illumination_ky=data.illumination_ky,
+            )
+            for channel, data in preprocessed.items()
+        }
+
+
+def _resolve_dataset_path(dataset: str | Path) -> Path:
+    candidate_path = Path(dataset)
+    if candidate_path.exists():
+        return candidate_path
+
+    from ptych.data.download.dataset_cache import NextcloudDatasetCache
+
+    cache = NextcloudDatasetCache()
+    return cache.fetch_dataset(str(dataset))
+
+
+def _load_manifest_and_raw_images(
+    dataset: str | Path,
+) -> tuple[StudyManifest, list[Float[torch.Tensor, "height width"]]]:
+    dir_path = _resolve_dataset_path(dataset)
+    manifest_path = dir_path / "info.json"
+    with open(manifest_path) as f:
+        manifest = parse_manifest(cast(dict[str, object], json.load(f)))
+    expected_shape = (
+        manifest.capture_dimensions.height,
+        manifest.capture_dimensions.width,
+    )
+    raw_images: list[Float[torch.Tensor, "height width"]] = []
+    for cap in manifest.captures:
+        img_path = dir_path / "captures" / cap.filename
+        img = cast(npt.NDArray[np.float64], np.load(img_path, mmap_mode="r"))
+
+        if img.ndim != 2:
+            raise ValueError(f"Image must be 2D, got {img.ndim}D for {cap.filename}")
+        if img.shape != expected_shape:
+            raise ValueError(
+                f"Image dimensions don't match manifest. "
+                f"Expected {expected_shape} (height, width), got {img.shape} for {cap.filename}"
+            )
+        raw_images.append(torch.from_numpy(np.array(img, dtype=np.float32)))
+
+    return manifest, raw_images

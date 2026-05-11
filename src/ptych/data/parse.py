@@ -7,12 +7,16 @@ from typing import cast
 from uuid import UUID
 
 from .types import (
+    BayerPattern,
     Capture,
     CaptureDimensions,
+    ColorChannel,
     DarkfieldCapture,
     LedPosition,
     ManifestCapture,
     StudyManifest,
+    VALID_BAYER_PATTERNS,
+    VALID_COLOR_CHANNELS,
     is_illuminated_capture,
 )
 
@@ -29,6 +33,22 @@ def _require_str(data: dict[str, object], key: str, context: str = "") -> str:
     if not isinstance(value, str):
         raise ManifestParseError(
             f"{prefix}Expected str for '{key}', got {type(value).__name__}"
+        )
+    return value
+
+
+def _require_nullable_str(
+    data: dict[str, object], key: str, context: str = ""
+) -> str | None:
+    prefix = f"{context}: " if context else ""
+    if key not in data:
+        raise ManifestParseError(f"{prefix}Missing required key '{key}'")
+    value = data[key]
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ManifestParseError(
+            f"{prefix}Expected str or null for '{key}', got {type(value).__name__}"
         )
     return value
 
@@ -99,12 +119,60 @@ def _optional_num(data: dict[str, object], key: str) -> float | None:
     return float(value)
 
 
+def _require_bayer_pattern(data: dict[str, object]) -> BayerPattern | None:
+    raw_pattern = _require_nullable_str(data, "bayer_pattern")
+    if raw_pattern is None:
+        return None
+    if raw_pattern not in VALID_BAYER_PATTERNS:
+        raise ManifestParseError(
+            "'bayer_pattern' must be one of "
+            f"{list(VALID_BAYER_PATTERNS)} or null, got {raw_pattern!r}"
+        )
+    return cast(BayerPattern, raw_pattern)
+
+
+def _require_channel(data: dict[str, object], context: str) -> ColorChannel | None:
+    raw_channel = _require_nullable_str(data, "channel", context)
+    if raw_channel is None:
+        return None
+    if raw_channel not in VALID_COLOR_CHANNELS:
+        raise ManifestParseError(
+            f"{context}: 'channel' must be one of "
+            f"{list(VALID_COLOR_CHANNELS)} or null, got {raw_channel!r}"
+        )
+    return cast(ColorChannel, raw_channel)
+
+
+def _validate_bayer_channel_consistency(
+    bayer_pattern: BayerPattern | None,
+    captures: list[ManifestCapture],
+) -> None:
+    if bayer_pattern is None:
+        invalid = [
+            capture.filename for capture in captures if capture.channel is not None
+        ]
+        if invalid:
+            raise ManifestParseError(
+                "'bayer_pattern' is null, so all capture channels must also be null. "
+                f"First invalid capture: {invalid[0]}"
+            )
+        return
+
+    invalid = [capture.filename for capture in captures if capture.channel is None]
+    if invalid:
+        raise ManifestParseError(
+            "'bayer_pattern' is set, so every capture must define a channel. "
+            f"First invalid capture: {invalid[0]}"
+        )
+
+
 def manifest_to_dict(manifest: StudyManifest) -> dict[str, object]:
     """Serialize a StudyManifest into the JSON-compatible manifest shape."""
     captures: list[dict[str, object]] = []
     for capture in manifest.captures:
         capture_data: dict[str, object] = {
             "filename": capture.filename,
+            "channel": capture.channel,
             "led_positions": [
                 {
                     "x": position.x,
@@ -133,10 +201,9 @@ def manifest_to_dict(manifest: StudyManifest) -> dict[str, object]:
             "width": manifest.capture_dimensions.width,
             "height": manifest.capture_dimensions.height,
         },
+        "bayer_pattern": manifest.bayer_pattern,
         "captures": captures,
     }
-    if manifest.metadata:
-        manifest_data["metadata"] = manifest.metadata
     return manifest_data
 
 
@@ -177,6 +244,7 @@ def parse_manifest(data: dict[str, object]) -> StudyManifest:
         captured_at_str = _optional_str(cap, "captured_at")
 
         filename = _require_str(cap, "filename", f"captures[{i}]")
+        channel = _require_channel(cap, f"captures[{i}]")
         captured_at = (
             datetime.fromisoformat(captured_at_str) if captured_at_str else None
         )
@@ -187,14 +255,20 @@ def parse_manifest(data: dict[str, object]) -> StudyManifest:
                     filename=filename,
                     wavelength=_require_num(cap, "wavelength", f"captures[{i}]"),
                     led_positions=led_positions,
+                    channel=channel,
                     captured_at=captured_at,
                     exposure=exposure,
                 )
             )
         else:
+            if "wavelength" in cap:
+                raise ManifestParseError(
+                    f"captures[{i}]: Darkfield captures must not define 'wavelength'"
+                )
             captures.append(
                 DarkfieldCapture(
                     filename=filename,
+                    channel=channel,
                     led_positions=led_positions,
                     captured_at=captured_at,
                     exposure=exposure,
@@ -202,14 +276,8 @@ def parse_manifest(data: dict[str, object]) -> StudyManifest:
             )
 
     version = _optional_str(data, "version")
-    metadata_raw = data.get("metadata")
-    metadata: dict[str, object] = {}
-    if metadata_raw is not None:
-        if not isinstance(metadata_raw, dict):
-            raise ManifestParseError(
-                f"Expected dict for 'metadata', got {type(metadata_raw).__name__}"
-            )
-        metadata = cast(dict[str, object], metadata_raw)
+    bayer_pattern = _require_bayer_pattern(data)
+    _validate_bayer_channel_consistency(bayer_pattern, captures)
 
     dims_raw = data.get("capture_dimensions")
     if dims_raw is None:
@@ -227,7 +295,7 @@ def parse_manifest(data: dict[str, object]) -> StudyManifest:
         numerical_aperture=_require_num(data, "numerical_aperture"),
         sensor_pixel_size=_require_num(data, "sensor_pixel_size"),
         capture_dimensions=capture_dimensions,
+        bayer_pattern=bayer_pattern,
         captures=captures,
         version=version if version else "1.0",
-        metadata=metadata,
     )
