@@ -126,7 +126,7 @@ def preprocess_study_data(
     )
 
     image_slice = (slice(y_top, y_bottom), slice(x_left, x_right))
-    bayer_pattern = _shift_bayer_pattern("RGGB", y_top, x_left)
+    bayer_pattern = _shift_bayer_pattern(manifest.bayer_format, y_top, x_left)
 
     valid_images = [
         raw_images[idx][image_slice]

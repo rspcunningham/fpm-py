@@ -7,6 +7,8 @@ from typing import cast
 from uuid import UUID
 
 from .types import (
+    BAYER_FORMATS,
+    BayerFormat,
     Capture,
     CaptureDimensions,
     DarkfieldCapture,
@@ -55,6 +57,16 @@ def _require_int(data: dict[str, object], key: str, context: str = "") -> int:
             f"{prefix}Expected int for '{key}', got {type(value).__name__}"
         )
     return value
+
+
+def _require_bayer_format(data: dict[str, object]) -> BayerFormat:
+    value = _require_str(data, "bayer_format")
+    if value not in BAYER_FORMATS:
+        supported = ", ".join(BAYER_FORMATS)
+        raise ManifestParseError(
+            f"Expected 'bayer_format' to be one of {supported}, got {value!r}"
+        )
+    return cast(BayerFormat, value)
 
 
 def _require_list(data: dict[str, object], key: str, context: str = "") -> list[object]:
@@ -129,6 +141,7 @@ def manifest_to_dict(manifest: StudyManifest) -> dict[str, object]:
         "magnification": manifest.magnification,
         "numerical_aperture": manifest.numerical_aperture,
         "sensor_pixel_size": manifest.sensor_pixel_size,
+        "bayer_format": manifest.bayer_format,
         "capture_dimensions": {
             "width": manifest.capture_dimensions.width,
             "height": manifest.capture_dimensions.height,
@@ -226,6 +239,7 @@ def parse_manifest(data: dict[str, object]) -> StudyManifest:
         magnification=_require_num(data, "magnification"),
         numerical_aperture=_require_num(data, "numerical_aperture"),
         sensor_pixel_size=_require_num(data, "sensor_pixel_size"),
+        bayer_format=_require_bayer_format(data),
         capture_dimensions=capture_dimensions,
         captures=captures,
         version=version if version else "1.0",

@@ -2,8 +2,12 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, TypeGuard
+from typing import Any, Literal, TypeGuard
 from uuid import UUID
+
+
+type BayerFormat = Literal["RGGB", "GRBG", "GBRG", "BGGR"]
+BAYER_FORMATS: tuple[BayerFormat, ...] = ("RGGB", "GRBG", "GBRG", "BGGR")
 
 
 @dataclass
@@ -88,6 +92,7 @@ class StudyManifest:
         magnification: Objective magnification factor (e.g., 4.0 for 4x).
         numerical_aperture: Objective numerical aperture.
         sensor_pixel_size: Physical size of sensor pixels in meters.
+        bayer_format: Bayer color-filter arrangement for the raw captures.
         capture_dimensions: Pixel dimensions of all capture images.
         captures: List of captured images. Illuminated captures carry wavelength;
             darkfield captures have no active LED positions and no wavelength.
@@ -100,6 +105,7 @@ class StudyManifest:
     magnification: float
     numerical_aperture: float
     sensor_pixel_size: float
+    bayer_format: BayerFormat
     capture_dimensions: CaptureDimensions
     captures: list[ManifestCapture]
     version: str = "1.0"

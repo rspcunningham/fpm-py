@@ -9,7 +9,7 @@ from ptych.core.metric_plots import save_metrics_summary
 from ptych.data.utils import get_default_device
 
 # Select dataset
-dataset = "malaria-test"
+dataset = "usaf-test-dark"
 
 CROP_SIZE = 416  # should be the same as PATCH_SIZE if practical
 CROP_TOP = 1024

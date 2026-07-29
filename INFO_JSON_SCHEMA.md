@@ -43,6 +43,7 @@ Formally, this follows the left-hand rule with the Z-axis pointing from sample t
 | `magnification` | number | Yes | Objective magnification factor (e.g., `4` for 4x, `10` for 10x). |
 | `numerical_aperture` | number | Yes | Estimated objective numerical aperture. This is a property of the capture hardware, not a reconstruction runtime setting. It is used to initialize the pupil radius and does not need to be absolutely precise. |
 | `sensor_pixel_size` | number | Yes | Physical size of sensor pixels in **meters**. |
+| `bayer_format` | string | Yes | Bayer color-filter arrangement of the raw captures. Must be one of `"RGGB"`, `"GRBG"`, `"GBRG"`, or `"BGGR"`. |
 | `capture_dimensions` | object | Yes | Dimensions of all capture images in pixels. See `CaptureDimensions` below. |
 | `captures` | array | Yes | List of illuminated `Capture` or darkfield capture objects (see below). |
 | `version` | string | No | Schema version. Defaults to `"1.0"` if omitted. |
@@ -97,6 +98,7 @@ All image files must be:
     "magnification": 10,
     "numerical_aperture": 0.25,
     "sensor_pixel_size": 0.00000167,
+    "bayer_format": "RGGB",
     "capture_dimensions": {"width": 2048, "height": 2048},
     "version": "1.0",
     "metadata": {
@@ -202,3 +204,4 @@ When creating `info.json` files programmatically:
 4. **led_positions**: Must be an array. Use an empty array `[]` for darkfield images (no illumination). For standard captures, typically contains one LED position
 5. **wavelength**: Common values are approximately `4.7e-7` (blue), `5.3e-7` (green), `6.25e-7` (red)
 6. **numerical_aperture**: Estimated objective NA for the capture hardware, for example `0.13` or `0.25`. This initializes the pupil radius; it does not need to be absolutely precise.
+7. **bayer_format**: Must describe the top-left 2×2 Bayer tile in row-major order using one of `RGGB`, `GRBG`, `GBRG`, or `BGGR`.
