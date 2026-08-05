@@ -5,14 +5,15 @@ import torch
 from jaxtyping import Float
 
 from ptych.data.bayer import demosaic
-from ptych.data.types import Capture, StudyManifest, is_illuminated_capture
+from ptych.data.types import (
+    Channel,
+    Capture,
+    StudyManifest,
+    is_illuminated_capture,
+)
 from ptych.data.utils import prepare_captures
 
-_RGB_REFERENCE_WAVELENGTHS_M = (
-    625e-9,  # red
-    525e-9,  # green
-    470e-9,  # blue
-)
+_CHANNEL_INDICES: dict[Channel, int] = {"R": 0, "G": 1, "B": 2}
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -68,40 +69,11 @@ def centered_square_crop(
     )
 
 
-def _crop_bounds(
-    crop: ImageCrop | None,
-    *,
-    image_height: int,
-    image_width: int,
-) -> tuple[int, int, int, int]:
-    if crop is None:
-        return 0, image_height, 0, image_width
-
-    return crop.bounds(image_height=image_height, image_width=image_width)
-
-
-def _channel_index_for_wavelength(wavelength_m: float) -> int:
-    return min(
-        range(len(_RGB_REFERENCE_WAVELENGTHS_M)),
-        key=lambda idx: abs(wavelength_m - _RGB_REFERENCE_WAVELENGTHS_M[idx]),
-    )
-
-
-def _capture_exposure_ms(capture_index: int, exposure_ms: float | None) -> float:
-    if exposure_ms is None:
-        raise ValueError(f"Capture {capture_index} is missing exposure metadata")
-    if exposure_ms <= 0:
-        raise ValueError(
-            f"Capture {capture_index} has non-positive exposure {exposure_ms}"
-        )
-    return exposure_ms
-
-
 def preprocess_study_data(
     manifest: StudyManifest,
     raw_images: Sequence[Float[torch.Tensor, "height width"]],
     *,
-    crop: ImageCrop | None = None,
+    crop_offset: tuple[int, int] = (0, 0),
 ) -> tuple[
     list[Capture],
     Float[torch.Tensor, "illumination height width"],
@@ -109,52 +81,52 @@ def preprocess_study_data(
     Float[torch.Tensor, "illumination"],
 ]:
     valid_captures, _, illumination_kx, illumination_ky = prepare_captures(manifest)
-    dark_indices = [
-        idx
-        for idx, capture in enumerate(manifest.captures)
-        if not is_illuminated_capture(capture)
-    ]
-
-    expected_shape = (
-        manifest.capture_dimensions.height,
-        manifest.capture_dimensions.width,
-    )
-    y_top, y_bottom, x_left, x_right = _crop_bounds(
-        crop,
-        image_height=expected_shape[0],
-        image_width=expected_shape[1],
+    y_offset, x_offset = crop_offset
+    bayer_pattern = _shift_bayer_pattern(
+        manifest.bayer_format,
+        y_offset,
+        x_offset,
     )
 
-    image_slice = (slice(y_top, y_bottom), slice(x_left, x_right))
-    bayer_pattern = _shift_bayer_pattern(manifest.bayer_format, y_top, x_left)
-
-    valid_images = [
-        raw_images[idx][image_slice]
-        for idx, capture in enumerate(manifest.captures)
-        if is_illuminated_capture(capture)
-    ]
-    raw_captures = torch.stack(valid_images)
-    demosaiced_captures = demosaic(raw_captures, pattern=bayer_pattern)
-
-    if dark_indices:
-        raw_darks = torch.stack([raw_images[idx][image_slice] for idx in dark_indices])
-        dark_avg = demosaic(raw_darks, pattern=bayer_pattern).mean(dim=0)
-        demosaiced_captures = (demosaiced_captures - dark_avg.unsqueeze(0)).clamp(min=0)
-
+    demosaiced_images = demosaic(torch.stack(list(raw_images)), pattern=bayer_pattern)
     channel_indices = torch.tensor(
-        [_channel_index_for_wavelength(cap.wavelength) for cap in valid_captures],
-        device=demosaiced_captures.device,
+        [_CHANNEL_INDICES[capture.channel] for capture in manifest.captures],
+        device=demosaiced_images.device,
     )
-    capture_indices = torch.arange(
-        len(valid_captures), device=demosaiced_captures.device
+    image_indices = torch.arange(
+        len(manifest.captures),
+        device=demosaiced_images.device,
     )
-    captures_tensor = demosaiced_captures[capture_indices, channel_indices]
-    exposure_ms = torch.tensor(
-        [_capture_exposure_ms(i, cap.exposure) for i, cap in enumerate(valid_captures)],
+    selected_images = demosaiced_images[image_indices, channel_indices]
+
+    dark_images: dict[tuple[Channel, float], list[torch.Tensor]] = {}
+    for index, capture in enumerate(manifest.captures):
+        if is_illuminated_capture(capture):
+            continue
+        key = (capture.channel, capture.exposure)
+        dark_images.setdefault(key, []).append(selected_images[index])
+
+    dark_averages = {
+        key: torch.stack(images).mean(dim=0) for key, images in dark_images.items()
+    }
+    corrected_images = []
+    for index, capture in enumerate(manifest.captures):
+        if not is_illuminated_capture(capture):
+            continue
+        image = selected_images[index]
+        if dark_averages:
+            image = (image - dark_averages[(capture.channel, capture.exposure)]).clamp(
+                min=0
+            )
+        corrected_images.append(image)
+
+    captures_tensor = torch.stack(corrected_images)
+    exposure_s = torch.tensor(
+        [capture.exposure for capture in valid_captures],
         dtype=captures_tensor.dtype,
         device=captures_tensor.device,
     )
-    captures_tensor = captures_tensor / exposure_ms[:, None, None]
+    captures_tensor = captures_tensor / exposure_s[:, None, None]
 
     max_value = torch.max(captures_tensor)
     if max_value <= 0:

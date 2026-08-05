@@ -6,6 +6,11 @@ import sys
 from pathlib import Path
 from typing import cast
 
+from ptych.data.validate import (
+    DatasetValidationError,
+    normalize_dataset_id,
+    validate_dataset,
+)
 from ptych.data.upload.nextcloud_webdav import (
     AUTH_CONFIG_PATH,
     NEXTCLOUD_REMOTE_ROOT,
@@ -18,11 +23,6 @@ from ptych.data.upload.nextcloud_webdav import (
     read_credentials,
     verify_public_manifest,
     write_credentials,
-)
-from ptych.data.upload.validate import (
-    DatasetValidationError,
-    normalize_dataset_id,
-    validate_dataset,
 )
 
 

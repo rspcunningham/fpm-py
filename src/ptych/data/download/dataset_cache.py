@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import BinaryIO, Protocol, cast
 
-from ptych.data.parse import ManifestParseError, parse_manifest
+from ptych.data.validate import DatasetValidationError, validate_dataset
 
 from .nextcloud_share import NextcloudShareTransport
 
@@ -42,10 +42,6 @@ class NextcloudDatasetCacheError(Exception):
 
 
 class InvalidDatasetIdError(NextcloudDatasetCacheError):
-    pass
-
-
-class DatasetValidationError(NextcloudDatasetCacheError):
     pass
 
 
@@ -93,6 +89,12 @@ class NextcloudDatasetCache:
         with self._dataset_lock(normalized_id):
             metadata = self._read_metadata(normalized_id)
             if metadata and metadata.get("status") == "ready" and data_path.is_dir():
+                try:
+                    validate_dataset(data_path)
+                except DatasetValidationError as exc:
+                    raise DatasetValidationError(
+                        f"Cached dataset '{normalized_id}' is invalid: {exc}"
+                    ) from exc
                 print(f"Using cached dataset {normalized_id} at {data_path}")
                 return data_path
 
@@ -193,47 +195,12 @@ class NextcloudDatasetCache:
     def _validate_extracted_dataset(
         self, dataset_root: Path, dataset_id: str
     ) -> DatasetMetadata:
-        manifest_path = dataset_root / "info.json"
-        if not manifest_path.is_file():
-            raise DatasetValidationError(f"Dataset '{dataset_id}' is missing info.json")
-
-        captures_dir = dataset_root / "captures"
-        if not captures_dir.is_dir():
-            raise DatasetValidationError(f"Dataset '{dataset_id}' is missing captures/")
-
-        try:
-            with manifest_path.open(encoding="utf-8") as fh:
-                manifest_data = cast(dict[str, object], json.load(fh))
-            manifest = parse_manifest(manifest_data)
-        except (json.JSONDecodeError, ManifestParseError, ValueError) as exc:
-            raise DatasetValidationError(
-                f"Dataset '{dataset_id}' has an invalid info.json: {exc}"
-            ) from exc
-
-        if not manifest.captures:
-            raise DatasetValidationError(f"Dataset '{dataset_id}' has no captures")
-
-        filenames = [capture.filename for capture in manifest.captures]
-        if len(set(filenames)) != len(filenames):
-            raise DatasetValidationError(
-                f"Dataset '{dataset_id}' contains duplicate capture filenames"
-            )
-
-        missing_files = [
-            capture.filename
-            for capture in manifest.captures
-            if not (captures_dir / capture.filename).is_file()
-        ]
-        if missing_files:
-            first_missing = missing_files[0]
-            raise DatasetValidationError(
-                f"Dataset '{dataset_id}' is missing capture file '{first_missing}'"
-            )
+        dataset = validate_dataset(dataset_root)
 
         return {
             "dataset_id": dataset_id,
-            "study_id": str(manifest.study_id),
-            "capture_count": len(manifest.captures),
+            "study_id": str(dataset.manifest.study_id),
+            "capture_count": len(dataset.manifest.captures),
             "fetched_at": datetime.now(UTC).isoformat(),
             "status": "ready",
         }

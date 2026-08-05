@@ -1,207 +1,124 @@
-# info.json Schema Documentation
+# `info.json` schema
 
-This document describes the schema for `info.json` files, which store `StudyManifest` objects representing Fourier ptychography acquisition data.
+`info.json` describes one single-wavelength Fourier ptychography acquisition made
+from raw Bayer captures. Unknown fields are rejected everywhere except inside
+`metadata`.
 
-## Overview
+All positions, wavelengths, and sensor pixel sizes use meters. Exposure uses
+seconds.
 
-The `info.json` file is the manifest for a Fourier ptychography study. It contains metadata about the optical system, along with a list of captures—each capture representing a single image taken with specific illumination parameters.
+## Root object
 
-**Note:** Darkfield images are represented as captures with no LED positions and are used for dark-frame subtraction during preprocessing. Multiplexed images (captures with multiple LEDs on simultaneously) and captures at different wavelengths are supported in the schema but not yet processed; loading them for reconstruction will raise an error.
+| Field | Type | Required | Contract |
+|---|---|---:|---|
+| `study_id` | UUID string | Yes | Any valid UUID. |
+| `created_at` | ISO 8601 string | Yes | Study acquisition timestamp. |
+| `magnification` | number | Yes | Positive and finite. |
+| `numerical_aperture` | number | Yes | Positive and finite. |
+| `sensor_pixel_size` | number | Yes | Positive and finite, in meters. |
+| `bayer_format` | string | Yes | `RGGB`, `GRBG`, `GBRG`, or `BGGR`. |
+| `capture_dimensions` | object | Yes | Positive integer `width` and `height`. |
+| `captures` | array | Yes | At least one illuminated capture. |
+| `metadata` | object | No | Opaque JSON metadata, ignored by `ptych`. |
 
-## Units
+`bayer_format` is the row-major 2×2 Bayer tile at the top-left of the complete
+stored image. Cropping adjusts the effective tile automatically.
 
-All physical measurements use SI units:
+The contents of `metadata` are outside this schema, including its unit
+semantics.
 
-| Measurement | Unit |
-|-------------|------|
-| Positions (x, y, z) | meters (m) |
-| Wavelength | meters (m) |
-| Sensor pixel size | meters (m) |
-| Exposure | milliseconds (ms) |
-| Numerical aperture | dimensionless |
+## Illuminated capture
 
-Numeric values can be written as decimals (e.g., `0.000000625`) or in scientific notation (e.g., `6.25e-7`). Both formats are parsed correctly.
+An illuminated capture has exactly one LED position.
 
-## Coordinate System
+| Field | Type | Required | Contract |
+|---|---|---:|---|
+| `filename` | string | Yes | Unique flat `.npy` basename. |
+| `wavelength` | number | Yes | Positive finite illumination wavelength, in meters. |
+| `channel` | string | Yes | Exactly `R`, `G`, or `B`. |
+| `exposure` | number | Yes | Positive finite exposure, in seconds. |
+| `led_positions` | array | Yes | Exactly one LED position. |
+| `captured_at` | ISO 8601 string | No | Capture timestamp. |
 
-LED positions use a coordinate system where:
+`channel` is authoritative: it selects the demosaiced sensor channel and is not
+inferred from `wavelength`. All illuminated captures in a dataset must use the
+same wavelength.
 
-- **Origin (0, 0, 0)**: Center of the sample
-- **X and Y axes**: The intuitive directions when looking down at the top of the LED board. If you're viewing the LED board from above, X and Y correspond to horizontal and vertical movement across the board surface.
-- **Z-axis**: The distance from the LED board to the sample. Z should always be positive.
+## Dark capture
 
-Formally, this follows the left-hand rule with the Z-axis pointing from sample toward LEDs.
+A dark capture has no LED positions and no `wavelength`.
 
-## Schema
+| Field | Type | Required | Contract |
+|---|---|---:|---|
+| `filename` | string | Yes | Unique flat `.npy` basename. |
+| `channel` | string | Yes | Exactly `R`, `G`, or `B`. |
+| `exposure` | number | Yes | Positive finite exposure, in seconds. |
+| `led_positions` | array | Yes | Must be empty. |
+| `captured_at` | ISO 8601 string | No | Capture timestamp. |
 
-### Root Object: StudyManifest
+Dark captures are optional. If any are present, their distinct
+`(channel, exposure)` pairs must exactly match the pairs used by illuminated
+captures. Multiple dark captures for one pair are averaged.
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `study_id` | string (UUID) | Yes | Unique identifier for this study. Must be a valid UUID v4 format. |
-| `created_at` | string (ISO 8601) | Yes | Timestamp when the study was created. Format: `YYYY-MM-DDTHH:MM:SS` or `YYYY-MM-DDTHH:MM:SS.mmm` |
-| `magnification` | number | Yes | Objective magnification factor (e.g., `4` for 4x, `10` for 10x). |
-| `numerical_aperture` | number | Yes | Estimated objective numerical aperture. This is a property of the capture hardware, not a reconstruction runtime setting. It is used to initialize the pupil radius and does not need to be absolutely precise. |
-| `sensor_pixel_size` | number | Yes | Physical size of sensor pixels in **meters**. |
-| `bayer_format` | string | Yes | Bayer color-filter arrangement of the raw captures. Must be one of `"RGGB"`, `"GRBG"`, `"GBRG"`, or `"BGGR"`. |
-| `capture_dimensions` | object | Yes | Dimensions of all capture images in pixels. See `CaptureDimensions` below. |
-| `captures` | array | Yes | List of illuminated `Capture` or darkfield capture objects (see below). |
-| `version` | string | No | Schema version. Defaults to `"1.0"` if omitted. |
-| `metadata` | object | No | Arbitrary user-defined metadata (key-value pairs). |
+## LED position
 
-### Capture Object
+| Field | Type | Required | Contract |
+|---|---|---:|---|
+| `x` | number | Yes | Finite, in meters. |
+| `y` | number | Yes | Finite, in meters. |
+| `z` | number | Yes | Positive and finite, in meters. |
 
-Each capture represents a single image acquired with specific illumination.
+Coordinates describe the LED position relative to the sample center. Positive
+`z` points from the sample toward the LED array.
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `filename` | string | Yes | Basename of the image file (e.g., `"im_0.npy"`). Files are stored in the `captures/` subdirectory. Must be a `.npy` file (NumPy array). |
-| `wavelength` | number | Illuminated captures only | Captured (ie. what the sensor measured) wavelength in **meters**. Omit this for darkfield captures. |
-| `led_positions` | array | Yes | Array of `LedPosition` objects. Typically contains one element per illuminated capture. An empty array indicates a darkfield image (no illumination). |
-| `captured_at` | string (ISO 8601) | No | Timestamp when the image was captured. Format: `YYYY-MM-DDTHH:MM:SS` or `YYYY-MM-DDTHH:MM:SS.mmm` |
-| `exposure` | number | No | Exposure time in **milliseconds**. |
+## Capture files
 
-### LedPosition Object
+The dataset layout is:
 
-Represents the 3D position of an LED in the illumination array.
+```text
+dataset/
+├── info.json
+└── captures/
+    └── *.npy
+```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `x` | number | Yes | X coordinate in **meters**. |
-| `y` | number | Yes | Y coordinate in **meters**. |
-| `z` | number | Yes | Z coordinate (distance to sample) in **meters**. Should always be positive. |
-
-### CaptureDimensions Object
-
-Specifies the pixel dimensions of all capture images in the study. All captures must have identical dimensions.
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `width` | integer | Yes | Image width in pixels (number of columns). |
-| `height` | integer | Yes | Image height in pixels (number of rows). |
-
-## Image Files
-
-All image files must be:
-
-- **Format**: NumPy array files (`.npy`) containing a single-channel, 2D array
-- **Location**: Stored in a `captures/` subdirectory relative to `info.json`
-- **Filename convention**: The `filename` field in each capture contains only the basename (e.g., `"im_0.npy"`), not the full path. Files are always located at `captures/<filename>`
-- **Shape**: All captures must have identical dimensions matching the `capture_dimensions` field. Dimensions are specified as `{width, height}` where width is columns and height is rows (note: NumPy arrays store shape as `(height, width)`). 
+The contents of `captures/` must exactly match the filenames in `captures`.
+Every file must contain one real numeric 2-D NumPy array with shape
+`(height, width)`. Raw intensities must be finite and non-negative.
 
 ## Example
 
 ```json
 {
-    "study_id": "550e8400-e29b-41d4-a716-446655440000",
-    "created_at": "2025-01-14T10:30:00.000",
-    "magnification": 10,
-    "numerical_aperture": 0.25,
-    "sensor_pixel_size": 0.00000167,
-    "bayer_format": "RGGB",
-    "capture_dimensions": {"width": 2048, "height": 2048},
-    "version": "1.0",
-    "metadata": {
-        "camera_model": "FLIR BFS-U3-50S5C",
-        "notes": "Test acquisition with USAF target"
+  "study_id": "550e8400-e29b-41d4-a716-446655440000",
+  "created_at": "2025-01-14T10:30:00",
+  "magnification": 1.7,
+  "numerical_aperture": 0.18,
+  "sensor_pixel_size": 1.12e-6,
+  "bayer_format": "BGGR",
+  "capture_dimensions": {
+    "width": 3280,
+    "height": 2464
+  },
+  "captures": [
+    {
+      "filename": "im_000.npy",
+      "wavelength": 5.25e-7,
+      "channel": "G",
+      "exposure": 0.005198,
+      "led_positions": [
+        {"x": 0.0, "y": 0.0, "z": 0.0605}
+      ]
     },
-    "captures": [
-        {
-            "filename": "im_0_R.npy",
-            "wavelength": 6.25e-7,
-            "captured_at": "2025-01-14T10:30:01.042",
-            "exposure": 10,
-            "led_positions": [
-                {
-                    "x": 0,
-                    "y": 0,
-                    "z": 0.07
-                }
-            ]
-        },
-        {
-            "filename": "im_0_G.npy",
-            "wavelength": 5.3e-7,
-            "captured_at": "2025-01-14T10:30:01.103",
-            "exposure": 8,
-            "led_positions": [
-                {
-                    "x": 0.0001,
-                    "y": 0,
-                    "z": 0.07
-                }
-            ]
-        },
-        {
-            "filename": "im_0_B.npy",
-            "wavelength": 4.7e-7,
-            "captured_at": "2025-01-14T10:30:01.178",
-            "exposure": 12,
-            "led_positions": [
-                {
-                    "x": -0.0001,
-                    "y": 0,
-                    "z": 0.07
-                }
-            ]
-        },
-        {
-            "filename": "im_1_R.npy",
-            "wavelength": 6.25e-7,
-            "captured_at": "2025-01-14T10:30:01.256",
-            "exposure": 10,
-            "led_positions": [
-                {
-                    "x": 0.004,
-                    "y": 0,
-                    "z": 0.07
-                }
-            ]
-        },
-        {
-            "filename": "im_1_G.npy",
-            "wavelength": 5.3e-7,
-            "captured_at": "2025-01-14T10:30:01.317",
-            "exposure": 8,
-            "led_positions": [
-                {
-                    "x": 0.0041,
-                    "y": 0,
-                    "z": 0.07
-                }
-            ]
-        },
-        {
-            "filename": "im_1_B.npy",
-            "wavelength": 4.7e-7,
-            "captured_at": "2025-01-14T10:30:01.392",
-            "exposure": 12,
-            "led_positions": [
-                {
-                    "x": 0.0039,
-                    "y": 0,
-                    "z": 0.07
-                }
-            ]
-        },
-        {
-            "filename": "darkfield_0.npy",
-            "captured_at": "2025-01-14T10:30:01.503",
-            "exposure": 50,
-            "led_positions": []
-        }
-    ]
+    {
+      "filename": "dark_000.npy",
+      "channel": "G",
+      "exposure": 0.005198,
+      "led_positions": []
+    }
+  ],
+  "metadata": {
+    "sample": "malaria"
+  }
 }
 ```
-
-## Validation Notes
-
-When creating `info.json` files programmatically:
-
-1. **study_id**: Must be a valid UUID string (e.g., generated via `uuid.uuid4()`)
-2. **created_at**: Must be ISO 8601 format without timezone (e.g., `2025-01-14T10:30:00` or `2025-01-14T10:30:00.123` for millisecond precision)
-3. **captures**: Must contain at least one capture
-4. **led_positions**: Must be an array. Use an empty array `[]` for darkfield images (no illumination). For standard captures, typically contains one LED position
-5. **wavelength**: Common values are approximately `4.7e-7` (blue), `5.3e-7` (green), `6.25e-7` (red)
-6. **numerical_aperture**: Estimated objective NA for the capture hardware, for example `0.13` or `0.25`. This initializes the pupil radius; it does not need to be absolutely precise.
-7. **bayer_format**: Must describe the top-left 2×2 Bayer tile in row-major order using one of `RGGB`, `GRBG`, `GBRG`, or `BGGR`.

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import base64
-import json
 import os
 import urllib.error
 import urllib.parse
@@ -17,7 +16,11 @@ from typing import BinaryIO, Callable, Protocol, cast
 
 from tqdm.auto import tqdm
 
-from ptych.data.parse import parse_manifest
+from ptych.data.validate import (
+    DatasetValidationError,
+    load_manifest,
+    validate_dataset,
+)
 
 
 DOWNLOAD_CHUNK_SIZE = 1024 * 1024
@@ -366,9 +369,7 @@ class NextcloudShareTransport:
             manifest_local_path,
         )
 
-        with manifest_local_path.open(encoding="utf-8") as fh:
-            manifest_data = cast(dict[str, object], json.load(fh))
-        manifest = parse_manifest(manifest_data)
+        manifest = load_manifest(manifest_local_path)
 
         capture_entries = {
             entry.path: entry
@@ -384,14 +385,16 @@ class NextcloudShareTransport:
             filename for filename in capture_files if filename not in capture_entries
         ]
         if missing_files:
-            first_missing = missing_files[0]
-            raise RuntimeError(
-                f"Dataset '{dataset_id}' is missing capture file '{first_missing}' on the share"
+            raise DatasetValidationError(
+                f"Dataset '{dataset_id}' is missing capture file(s) on the share: "
+                f"{sorted(missing_files)}"
             )
 
-        if len(set(capture_files)) != len(capture_files):
-            raise RuntimeError(
-                f"Dataset '{dataset_id}' contains duplicate capture filenames"
+        extra_files = sorted(set(capture_entries) - set(capture_files))
+        if extra_files:
+            raise DatasetValidationError(
+                f"Dataset '{dataset_id}' contains unreferenced capture file(s) "
+                f"on the share: {extra_files}"
             )
 
         total_bytes: int | None
@@ -460,6 +463,7 @@ class NextcloudShareTransport:
                 for future in futures:
                     future.result()
 
+        validate_dataset(dataset_root)
         return dataset_root
 
 

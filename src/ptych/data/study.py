@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 from typing import cast
 
@@ -7,9 +6,9 @@ import numpy.typing as npt
 import torch
 from jaxtyping import Float
 
-from ptych.data.parse import parse_manifest
 from ptych.data.preprocess import ImageCrop, preprocess_study_data
 from ptych.data.types import Capture, StudyManifest
+from ptych.data.validate import DatasetValidationError, validate_dataset
 
 
 class PtychStudy:
@@ -55,13 +54,25 @@ class PtychStudy:
             cache = NextcloudDatasetCache()
             dir_path = cache.fetch_dataset(str(dataset))
 
-        manifest_path = dir_path / "info.json"
-        with open(manifest_path) as f:
-            manifest = parse_manifest(cast(dict[str, object], json.load(f)))
+        dataset_validation = validate_dataset(dir_path)
+        manifest = dataset_validation.manifest
         expected_shape = (
             manifest.capture_dimensions.height,
             manifest.capture_dimensions.width,
         )
+        if crop is None:
+            y_top, y_bottom, x_left, x_right = (
+                0,
+                expected_shape[0],
+                0,
+                expected_shape[1],
+            )
+        else:
+            y_top, y_bottom, x_left, x_right = crop.bounds(
+                image_height=expected_shape[0],
+                image_width=expected_shape[1],
+            )
+
         raw_images: list[Float[torch.Tensor, "height width"]] = []
         for cap in manifest.captures:
             img_path = dir_path / "captures" / cap.filename
@@ -74,7 +85,18 @@ class PtychStudy:
                 f"Image dimensions don't match manifest. "
                 f"Expected {expected_shape} (height, width), got {img.shape} for {cap.filename}"
             )
-            raw_images.append(torch.from_numpy(np.array(img, dtype=np.float32)))
+            cropped_image = img[y_top:y_bottom, x_left:x_right]
+            if not np.isfinite(cropped_image).all():
+                raise DatasetValidationError(
+                    f"Capture contains non-finite intensities: {cap.filename}"
+                )
+            if np.any(cropped_image < 0):
+                raise DatasetValidationError(
+                    f"Capture contains negative intensities: {cap.filename}"
+                )
+            raw_images.append(
+                torch.from_numpy(np.array(cropped_image, dtype=np.float32))
+            )
 
         (
             capture_metadata,
@@ -84,7 +106,7 @@ class PtychStudy:
         ) = preprocess_study_data(
             manifest,
             raw_images,
-            crop=crop,
+            crop_offset=(y_top, x_left),
         )
 
         return cls(

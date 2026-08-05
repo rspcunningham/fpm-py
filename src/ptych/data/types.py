@@ -8,6 +8,8 @@ from uuid import UUID
 
 type BayerFormat = Literal["RGGB", "GRBG", "GBRG", "BGGR"]
 BAYER_FORMATS: tuple[BayerFormat, ...] = ("RGGB", "GRBG", "GBRG", "BGGR")
+type Channel = Literal["R", "G", "B"]
+CHANNELS: tuple[Channel, ...] = ("R", "G", "B")
 
 
 @dataclass
@@ -45,16 +47,18 @@ class Capture:
     Attributes:
         filename: Path to the image file relative to the manifest.
         wavelength: Illumination wavelength in meters.
+        channel: Demosaiced sensor channel used for this capture.
+        exposure: Exposure time in seconds.
         led_positions: LED positions active during this capture.
         captured_at: Timestamp when the image was captured.
-        exposure: Exposure time in milliseconds.
     """
 
     filename: str
     wavelength: float
+    channel: Channel
+    exposure: float
     led_positions: list[LedPosition]
     captured_at: datetime | None = None
-    exposure: float | None = None
 
     def __post_init__(self) -> None:
         if not self.led_positions:
@@ -66,9 +70,10 @@ class DarkfieldCapture:
     """A dark capture with no active LED illumination."""
 
     filename: str
+    channel: Channel
+    exposure: float
     led_positions: list[LedPosition] = field(default_factory=list)
     captured_at: datetime | None = None
-    exposure: float | None = None
 
     def __post_init__(self) -> None:
         if self.led_positions:
@@ -96,7 +101,6 @@ class StudyManifest:
         capture_dimensions: Pixel dimensions of all capture images.
         captures: List of captured images. Illuminated captures carry wavelength;
             darkfield captures have no active LED positions and no wavelength.
-        version: Manifest schema version.
         metadata: Arbitrary user-defined metadata.
     """
 
@@ -108,5 +112,4 @@ class StudyManifest:
     bayer_format: BayerFormat
     capture_dimensions: CaptureDimensions
     captures: list[ManifestCapture]
-    version: str = "1.0"
     metadata: dict[str, Any] = field(default_factory=dict)  # pyright: ignore[reportExplicitAny]

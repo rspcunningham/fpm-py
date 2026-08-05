@@ -8,9 +8,11 @@ from uuid import UUID
 
 from .types import (
     BAYER_FORMATS,
+    CHANNELS,
     BayerFormat,
     Capture,
     CaptureDimensions,
+    Channel,
     DarkfieldCapture,
     LedPosition,
     ManifestCapture,
@@ -21,6 +23,47 @@ from .types import (
 
 class ManifestParseError(Exception):
     """Raised when manifest parsing fails due to missing or invalid data."""
+
+
+_ROOT_KEYS = {
+    "study_id",
+    "created_at",
+    "magnification",
+    "numerical_aperture",
+    "sensor_pixel_size",
+    "bayer_format",
+    "capture_dimensions",
+    "captures",
+    "metadata",
+}
+_ILLUMINATED_CAPTURE_KEYS = {
+    "filename",
+    "wavelength",
+    "channel",
+    "exposure",
+    "led_positions",
+    "captured_at",
+}
+_DARK_CAPTURE_KEYS = {
+    "filename",
+    "channel",
+    "exposure",
+    "led_positions",
+    "captured_at",
+}
+_LED_POSITION_KEYS = {"x", "y", "z"}
+_CAPTURE_DIMENSION_KEYS = {"width", "height"}
+
+
+def _reject_unknown_keys(
+    data: dict[str, object],
+    allowed_keys: set[str],
+    context: str,
+) -> None:
+    unknown_keys = sorted(data.keys() - allowed_keys)
+    if unknown_keys:
+        formatted = ", ".join(repr(key) for key in unknown_keys)
+        raise ManifestParseError(f"{context}: Unknown field(s): {formatted}")
 
 
 def _require_str(data: dict[str, object], key: str, context: str = "") -> str:
@@ -69,6 +112,16 @@ def _require_bayer_format(data: dict[str, object]) -> BayerFormat:
     return cast(BayerFormat, value)
 
 
+def _require_channel(data: dict[str, object], context: str) -> Channel:
+    value = _require_str(data, "channel", context)
+    if value not in CHANNELS:
+        supported = ", ".join(CHANNELS)
+        raise ManifestParseError(
+            f"{context}: Expected 'channel' to be one of {supported}, got {value!r}"
+        )
+    return cast(Channel, value)
+
+
 def _require_list(data: dict[str, object], key: str, context: str = "") -> list[object]:
     prefix = f"{context}: " if context else ""
     if key not in data:
@@ -89,26 +142,38 @@ def _require_dict(value: object, context: str) -> dict[str, object]:
     return cast(dict[str, object], value)
 
 
-def _optional_str(data: dict[str, object], key: str) -> str | None:
-    value = data.get(key)
-    if value is None:
+def _optional_str(
+    data: dict[str, object],
+    key: str,
+    context: str = "",
+) -> str | None:
+    if key not in data:
         return None
+    value = data[key]
     if not isinstance(value, str):
+        prefix = f"{context}: " if context else ""
         raise ManifestParseError(
-            f"Expected str for '{key}', got {type(value).__name__}"
+            f"{prefix}Expected str for '{key}', got {type(value).__name__}"
         )
     return value
 
 
-def _optional_num(data: dict[str, object], key: str) -> float | None:
-    value = data.get(key)
-    if value is None:
-        return None
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+def _parse_datetime(value: str, context: str) -> datetime:
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError as exc:
         raise ManifestParseError(
-            f"Expected number for '{key}', got {type(value).__name__}"
-        )
-    return float(value)
+            f"{context}: Expected an ISO 8601 timestamp, got {value!r}"
+        ) from exc
+
+
+def _parse_uuid(value: str, context: str) -> UUID:
+    try:
+        return UUID(value)
+    except ValueError as exc:
+        raise ManifestParseError(
+            f"{context}: Expected a valid UUID, got {value!r}"
+        ) from exc
 
 
 def manifest_to_dict(manifest: StudyManifest) -> dict[str, object]:
@@ -117,6 +182,8 @@ def manifest_to_dict(manifest: StudyManifest) -> dict[str, object]:
     for capture in manifest.captures:
         capture_data: dict[str, object] = {
             "filename": capture.filename,
+            "channel": capture.channel,
+            "exposure": capture.exposure,
             "led_positions": [
                 {
                     "x": position.x,
@@ -130,14 +197,11 @@ def manifest_to_dict(manifest: StudyManifest) -> dict[str, object]:
             capture_data["wavelength"] = capture.wavelength
         if capture.captured_at is not None:
             capture_data["captured_at"] = capture.captured_at.isoformat()
-        if capture.exposure is not None:
-            capture_data["exposure"] = capture.exposure
         captures.append(capture_data)
 
     manifest_data: dict[str, object] = {
         "study_id": str(manifest.study_id),
         "created_at": manifest.created_at.isoformat(),
-        "version": manifest.version,
         "magnification": manifest.magnification,
         "numerical_aperture": manifest.numerical_aperture,
         "sensor_pixel_size": manifest.sensor_pixel_size,
@@ -169,55 +233,68 @@ def parse_manifest(data: dict[str, object]) -> StudyManifest:
     Raises:
         ManifestParseError: If required keys are missing or values have incorrect types.
     """
+    _reject_unknown_keys(data, _ROOT_KEYS, "root")
     captures_raw = _require_list(data, "captures")
     captures: list[ManifestCapture] = []
 
     for i, cap_raw in enumerate(captures_raw):
-        cap = _require_dict(cap_raw, f"captures[{i}]")
+        capture_context = f"captures[{i}]"
+        cap = _require_dict(cap_raw, capture_context)
 
-        led_raw = _require_list(cap, "led_positions", f"captures[{i}]")
+        led_raw = _require_list(cap, "led_positions", capture_context)
         led_positions: list[LedPosition] = []
         for j, pos_raw in enumerate(led_raw):
-            pos = _require_dict(pos_raw, f"captures[{i}].led_positions[{j}]")
+            position_context = f"{capture_context}.led_positions[{j}]"
+            pos = _require_dict(pos_raw, position_context)
+            _reject_unknown_keys(pos, _LED_POSITION_KEYS, position_context)
             led_positions.append(
                 LedPosition(
-                    x=_require_num(pos, "x"),
-                    y=_require_num(pos, "y"),
-                    z=_require_num(pos, "z"),
+                    x=_require_num(pos, "x", position_context),
+                    y=_require_num(pos, "y", position_context),
+                    z=_require_num(pos, "z", position_context),
                 )
             )
 
-        captured_at_str = _optional_str(cap, "captured_at")
-
-        filename = _require_str(cap, "filename", f"captures[{i}]")
+        captured_at_str = _optional_str(cap, "captured_at", capture_context)
+        filename = _require_str(cap, "filename", capture_context)
+        channel = _require_channel(cap, capture_context)
+        exposure = _require_num(cap, "exposure", capture_context)
         captured_at = (
-            datetime.fromisoformat(captured_at_str) if captured_at_str else None
+            _parse_datetime(captured_at_str, f"{capture_context}.captured_at")
+            if captured_at_str is not None
+            else None
         )
-        exposure = _optional_num(cap, "exposure")
         if led_positions:
+            _reject_unknown_keys(
+                cap,
+                _ILLUMINATED_CAPTURE_KEYS,
+                capture_context,
+            )
             captures.append(
                 Capture(
                     filename=filename,
-                    wavelength=_require_num(cap, "wavelength", f"captures[{i}]"),
+                    wavelength=_require_num(cap, "wavelength", capture_context),
+                    channel=channel,
+                    exposure=exposure,
                     led_positions=led_positions,
                     captured_at=captured_at,
-                    exposure=exposure,
                 )
             )
         else:
+            _reject_unknown_keys(cap, _DARK_CAPTURE_KEYS, capture_context)
             captures.append(
                 DarkfieldCapture(
                     filename=filename,
+                    channel=channel,
+                    exposure=exposure,
                     led_positions=led_positions,
                     captured_at=captured_at,
-                    exposure=exposure,
                 )
             )
 
-    version = _optional_str(data, "version")
-    metadata_raw = data.get("metadata")
     metadata: dict[str, object] = {}
-    if metadata_raw is not None:
+    if "metadata" in data:
+        metadata_raw = data["metadata"]
         if not isinstance(metadata_raw, dict):
             raise ManifestParseError(
                 f"Expected dict for 'metadata', got {type(metadata_raw).__name__}"
@@ -228,20 +305,20 @@ def parse_manifest(data: dict[str, object]) -> StudyManifest:
     if dims_raw is None:
         raise ManifestParseError("Missing required key 'capture_dimensions'")
     dims = _require_dict(dims_raw, "capture_dimensions")
+    _reject_unknown_keys(dims, _CAPTURE_DIMENSION_KEYS, "capture_dimensions")
     capture_dimensions = CaptureDimensions(
         width=_require_int(dims, "width", "capture_dimensions"),
         height=_require_int(dims, "height", "capture_dimensions"),
     )
 
     return StudyManifest(
-        study_id=UUID(_require_str(data, "study_id")),
-        created_at=datetime.fromisoformat(_require_str(data, "created_at")),
+        study_id=_parse_uuid(_require_str(data, "study_id"), "study_id"),
+        created_at=_parse_datetime(_require_str(data, "created_at"), "created_at"),
         magnification=_require_num(data, "magnification"),
         numerical_aperture=_require_num(data, "numerical_aperture"),
         sensor_pixel_size=_require_num(data, "sensor_pixel_size"),
         bayer_format=_require_bayer_format(data),
         capture_dimensions=capture_dimensions,
         captures=captures,
-        version=version if version else "1.0",
         metadata=metadata,
     )

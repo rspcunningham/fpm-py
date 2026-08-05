@@ -14,7 +14,7 @@ from typing import BinaryIO, Protocol, cast
 
 from tqdm.auto import tqdm
 
-from ptych.data.upload.validate import ValidatedDataset
+from ptych.data.validate import ValidatedDataset, parse_manifest_data
 
 
 NEXTCLOUD_BASE_URL = "https://dqe.asuscomm.com"
@@ -164,7 +164,14 @@ def verify_public_manifest(dataset_id: str) -> None:
         _public_url(f"{dataset_id}/info.json"),
         headers={"Authorization": _basic_auth_header(NEXTCLOUD_PUBLIC_SHARE_ID, "")},
     )
-    _open_public_response(request)
+    payload = _open_public_response(request)
+    try:
+        manifest_data = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise NextcloudWebDAVError(
+            f"Published dataset '{dataset_id}' has invalid JSON"
+        ) from exc
+    parse_manifest_data(manifest_data)
 
 
 def format_bytes(num_bytes: int) -> str:
