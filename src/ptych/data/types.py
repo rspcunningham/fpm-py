@@ -10,6 +10,7 @@ type BayerFormat = Literal["RGGB", "GRBG", "GBRG", "BGGR"]
 BAYER_FORMATS: tuple[BayerFormat, ...] = ("RGGB", "GRBG", "GBRG", "BGGR")
 type Channel = Literal["R", "G", "B"]
 CHANNELS: tuple[Channel, ...] = ("R", "G", "B")
+type DarkSubtraction = Literal["average_all", "nearest_only"]
 
 
 @dataclass
@@ -58,7 +59,7 @@ class Capture:
     channel: Channel
     exposure: float
     led_positions: list[LedPosition]
-    captured_at: datetime | None = None
+    captured_at: datetime
 
     def __post_init__(self) -> None:
         if not self.led_positions:
@@ -72,8 +73,8 @@ class DarkfieldCapture:
     filename: str
     channel: Channel
     exposure: float
+    captured_at: datetime
     led_positions: list[LedPosition] = field(default_factory=list)
-    captured_at: datetime | None = None
 
     def __post_init__(self) -> None:
         if self.led_positions:

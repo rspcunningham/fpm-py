@@ -14,6 +14,7 @@ dataset = "usaf-test-dark"
 CROP_SIZE = 416  # should be the same as PATCH_SIZE if practical
 CROP_TOP = 1024
 CROP_LEFT = 1440
+DARK_SUBTRACTION = "average_all"  # "average_all" or "nearest_only"
 
 # Reconstruction model settings
 OBJECT_TO_CAPTURE_RATIO = 4  # prefer 2 or 4
@@ -43,6 +44,7 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 study = PtychStudy.load(
     dataset,
     crop=ImageCrop(top=CROP_TOP, left=CROP_LEFT, width=CROP_SIZE, height=CROP_SIZE),
+    dark_subtraction=DARK_SUBTRACTION,
 )
 
 # Get GPU

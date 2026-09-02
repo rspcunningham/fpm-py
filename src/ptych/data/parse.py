@@ -142,22 +142,6 @@ def _require_dict(value: object, context: str) -> dict[str, object]:
     return cast(dict[str, object], value)
 
 
-def _optional_str(
-    data: dict[str, object],
-    key: str,
-    context: str = "",
-) -> str | None:
-    if key not in data:
-        return None
-    value = data[key]
-    if not isinstance(value, str):
-        prefix = f"{context}: " if context else ""
-        raise ManifestParseError(
-            f"{prefix}Expected str for '{key}', got {type(value).__name__}"
-        )
-    return value
-
-
 def _parse_datetime(value: str, context: str) -> datetime:
     try:
         return datetime.fromisoformat(value)
@@ -184,6 +168,7 @@ def manifest_to_dict(manifest: StudyManifest) -> dict[str, object]:
             "filename": capture.filename,
             "channel": capture.channel,
             "exposure": capture.exposure,
+            "captured_at": capture.captured_at.isoformat(),
             "led_positions": [
                 {
                     "x": position.x,
@@ -195,8 +180,6 @@ def manifest_to_dict(manifest: StudyManifest) -> dict[str, object]:
         }
         if is_illuminated_capture(capture):
             capture_data["wavelength"] = capture.wavelength
-        if capture.captured_at is not None:
-            capture_data["captured_at"] = capture.captured_at.isoformat()
         captures.append(capture_data)
 
     manifest_data: dict[str, object] = {
@@ -255,14 +238,13 @@ def parse_manifest(data: dict[str, object]) -> StudyManifest:
                 )
             )
 
-        captured_at_str = _optional_str(cap, "captured_at", capture_context)
+        captured_at_str = _require_str(cap, "captured_at", capture_context)
         filename = _require_str(cap, "filename", capture_context)
         channel = _require_channel(cap, capture_context)
         exposure = _require_num(cap, "exposure", capture_context)
-        captured_at = (
-            _parse_datetime(captured_at_str, f"{capture_context}.captured_at")
-            if captured_at_str is not None
-            else None
+        captured_at = _parse_datetime(
+            captured_at_str,
+            f"{capture_context}.captured_at",
         )
         if led_positions:
             _reject_unknown_keys(

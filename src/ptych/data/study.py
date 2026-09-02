@@ -7,7 +7,7 @@ import torch
 from jaxtyping import Float
 
 from ptych.data.preprocess import ImageCrop, preprocess_study_data
-from ptych.data.types import Capture, StudyManifest
+from ptych.data.types import Capture, DarkSubtraction, StudyManifest
 from ptych.data.validate import DatasetValidationError, validate_dataset
 
 
@@ -44,6 +44,7 @@ class PtychStudy:
         dataset: str | Path,
         *,
         crop: ImageCrop | None = None,
+        dark_subtraction: DarkSubtraction = "average_all",
     ) -> "PtychStudy":
         candidate_path = Path(dataset)
         if candidate_path.exists():
@@ -107,6 +108,7 @@ class PtychStudy:
             manifest,
             raw_images,
             crop_offset=(y_top, x_left),
+            dark_subtraction=dark_subtraction,
         )
 
         return cls(

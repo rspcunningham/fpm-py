@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import datetime
 
 import torch
 from jaxtyping import Float
@@ -8,6 +9,7 @@ from ptych.data.bayer import demosaic
 from ptych.data.types import (
     Channel,
     Capture,
+    DarkSubtraction,
     StudyManifest,
     is_illuminated_capture,
 )
@@ -74,6 +76,7 @@ def preprocess_study_data(
     raw_images: Sequence[Float[torch.Tensor, "height width"]],
     *,
     crop_offset: tuple[int, int] = (0, 0),
+    dark_subtraction: DarkSubtraction = "average_all",
 ) -> tuple[
     list[Capture],
     Float[torch.Tensor, "illumination height width"],
@@ -99,25 +102,40 @@ def preprocess_study_data(
     )
     selected_images = demosaiced_images[image_indices, channel_indices]
 
-    dark_images: dict[tuple[Channel, float], list[torch.Tensor]] = {}
+    # Dark captures grouped by (channel, exposure); each entry is (captured_at, index).
+    dark_frames: dict[tuple[Channel, float], list[tuple[datetime, int]]] = {}
     for index, capture in enumerate(manifest.captures):
         if is_illuminated_capture(capture):
             continue
         key = (capture.channel, capture.exposure)
-        dark_images.setdefault(key, []).append(selected_images[index])
+        dark_frames.setdefault(key, []).append((capture.captured_at, index))
 
-    dark_averages = {
-        key: torch.stack(images).mean(dim=0) for key, images in dark_images.items()
-    }
+    if dark_subtraction == "average_all":
+        dark_averages = {
+            key: selected_images[[index for _, index in frames]].mean(dim=0)
+            for key, frames in dark_frames.items()
+        }
+
     corrected_images = []
     for index, capture in enumerate(manifest.captures):
         if not is_illuminated_capture(capture):
             continue
         image = selected_images[index]
-        if dark_averages:
-            image = (image - dark_averages[(capture.channel, capture.exposure)]).clamp(
-                min=0
-            )
+        if dark_frames:
+            key = (capture.channel, capture.exposure)
+            if dark_subtraction == "average_all":
+                dark = dark_averages[key]
+            else:
+                # Nearest dark by |captured_at delta|; ties resolve to the earlier one.
+                _, nearest_index = min(
+                    dark_frames[key],
+                    key=lambda frame: (
+                        abs(frame[0] - capture.captured_at),
+                        frame[0],
+                    ),
+                )
+                dark = selected_images[nearest_index]
+            image = (image - dark).clamp(min=0)
         corrected_images.append(image)
 
     captures_tensor = torch.stack(corrected_images)
